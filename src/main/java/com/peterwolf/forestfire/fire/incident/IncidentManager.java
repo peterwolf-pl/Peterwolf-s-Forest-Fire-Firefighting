@@ -103,10 +103,13 @@ public final class IncidentManager {
 		int ignited = sim.igniteArea(pos, Math.max(1, size), id);
 		incident.burningBlocks = ignited;
 		incident.peakBurningBlocks = ignited;
-		incident.estimatedFireArea = ignited;
-		incident.fireIntensity = Math.min(1.0F, ignited / 40.0F);
+		incident.estimatedFireArea = Math.max(ignited, size * size);
+		incident.fireIntensity = Math.min(1.0F, 0.35F + ignited / 80.0F);
 		if (ignited > 0) {
 			incident.status = IncidentStatus.ACTIVE;
+		} else {
+			// Still register incident so admins can see a failed ignition (e.g. desert)
+			incident.status = IncidentStatus.REPORTED;
 		}
 		alertNearbyPlayers(incident);
 		markDirty();

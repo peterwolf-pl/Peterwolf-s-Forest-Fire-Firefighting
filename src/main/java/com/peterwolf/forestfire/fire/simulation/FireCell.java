@@ -22,7 +22,8 @@ public final class FireCell {
 	public FireCell(FuelMaterial material, int incidentId) {
 		this.materialOrdinal = (byte) material.ordinal();
 		this.moisture = (byte) Math.round(material.baseMoisture * 100.0F);
-		this.fuel = (byte) Math.min(100, Math.max(1, material.baseFuel / 3));
+		// 0–100 scale mapped from material burn duration (not /3 — that died in seconds).
+		this.fuel = (byte) material.initialFuelPercent();
 		this.heat = 0;
 		this.stageOrdinal = (byte) BurnStage.UNBURNED.ordinal();
 		this.reignitionTimer = 0;

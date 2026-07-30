@@ -46,6 +46,7 @@
 	"message.peterwolfs_forestfire.tool_used": "Used %s",
 	"message.peterwolfs_forestfire.command_bound": "Command post bound to %s",
 	"message.peterwolfs_forestfire.no_incident": "No active fire incident nearby.",
+	"message.peterwolfs_forestfire.kit_given": "Firefighter kit granted (%s stacks). Full gear, tools, pump, hoses and fuel.",
 
 	"modmenu.summaryTranslation.peterwolfs_forestfire": "Cooperative wildfire firefighting simulator.",
 	"modmenu.descriptionTranslation.peterwolfs_forestfire": "Dedicated to all firefighters who risk their lives protecting forests, wildlife and communities."

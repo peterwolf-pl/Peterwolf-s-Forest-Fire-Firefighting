@@ -29,14 +29,21 @@ All `/fireincident` and `/firetest` commands require **gamemaster** permission (
 /firedanger
 ```
 
-## Roles
+## Roles & equipment kit
 
 ```
 /firefighter roles
 /firefighter role
 /firefighter role CREW_MEMBER
 /firefighter role INCIDENT_COMMANDER
+
+/firefighter kit
+/firefighter gear
+/firekit
+/firesprzet
 ```
+
+`kit` / `gear` / `firekit` / `firesprzet` — give the full firefighter loadout (armor, tools, pump, hoses, nozzle, tanks, fuel, command post, thermal scanner).
 
 ## Testing / profiling
 
