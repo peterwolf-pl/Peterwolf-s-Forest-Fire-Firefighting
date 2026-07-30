@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "peterwolfs_forestfire:block/portable_pump"
+  }
+}

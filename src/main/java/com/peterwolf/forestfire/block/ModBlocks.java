@@ -1,0 +1,68 @@
+package com.peterwolf.forestfire.block;
+
+import com.peterwolf.forestfire.ForestFireMod;
+import com.peterwolf.forestfire.firefighting.hose.HoseBlock;
+import com.peterwolf.forestfire.firefighting.hose.HoseSplitterBlock;
+import com.peterwolf.forestfire.firefighting.hose.IntakeHoseBlock;
+import com.peterwolf.forestfire.firefighting.pump.PortablePumpBlock;
+import com.peterwolf.forestfire.firefighting.water.PortableSprinklerBlock;
+import com.peterwolf.forestfire.firefighting.water.PortableWaterTankBlock;
+import com.peterwolf.forestfire.firefighting.water.TankSize;
+import com.peterwolf.forestfire.world.CommandPostBlock;
+import java.util.function.Function;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.material.PushReaction;
+
+public final class ModBlocks {
+	public static final Block PORTABLE_PUMP = register("portable_pump", PortablePumpBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL).requiresCorrectToolForDrops());
+
+	public static final Block HOSE_SPLITTER = register("hose_splitter", HoseSplitterBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.5F).sound(SoundType.METAL));
+
+	public static final Block FIRE_HOSE = register("fire_hose", HoseBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_RED).strength(0.4F).sound(SoundType.WOOL)
+			.noOcclusion().pushReaction(PushReaction.DESTROY));
+
+	public static final Block INTAKE_HOSE = register("intake_hose", IntakeHoseBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_BLUE).strength(0.4F).sound(SoundType.WOOL)
+			.noOcclusion().pushReaction(PushReaction.DESTROY));
+
+	public static final Block WATER_TANK_SMALL = register("water_tank_small",
+		props -> new PortableWaterTankBlock(props, TankSize.SMALL),
+		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_LIGHT_BLUE).strength(2.0F).sound(SoundType.METAL));
+
+	public static final Block WATER_TANK_MEDIUM = register("water_tank_medium",
+		props -> new PortableWaterTankBlock(props, TankSize.MEDIUM),
+		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_LIGHT_BLUE).strength(2.5F).sound(SoundType.METAL));
+
+	public static final Block WATER_TANK_LARGE = register("water_tank_large",
+		props -> new PortableWaterTankBlock(props, TankSize.LARGE),
+		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_LIGHT_BLUE).strength(3.0F).sound(SoundType.METAL));
+
+	public static final Block PORTABLE_SPRINKLER = register("portable_sprinkler", PortableSprinklerBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(1.5F).sound(SoundType.METAL).noOcclusion());
+
+	public static final Block COMMAND_POST = register("command_post", CommandPostBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5F).sound(SoundType.WOOD));
+
+	private ModBlocks() {
+	}
+
+	public static void register() {
+		ForestFireMod.LOGGER.info("Registered forest fire blocks");
+	}
+
+	private static Block register(String path, Function<BlockBehaviour.Properties, Block> factory, BlockBehaviour.Properties properties) {
+		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, ForestFireMod.id(path));
+		Block block = factory.apply(properties.setId(key));
+		return Registry.register(BuiltInRegistries.BLOCK, key, block);
+	}
+}
