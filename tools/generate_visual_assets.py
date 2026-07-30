@@ -22,6 +22,7 @@ BLOCK_TEXTURES = ASSETS / "textures/block"
 MATERIAL_TEXTURES = BLOCK_TEXTURES / "material"
 EQUIPMENT_TEXTURES = ASSETS / "textures/entity/equipment"
 BLOCK_MODELS = ASSETS / "models/block"
+CLIENT_ITEMS = ASSETS / "items"
 
 TRANSPARENT = (0, 0, 0, 0)
 INK = (35, 29, 27, 255)
@@ -381,6 +382,35 @@ ITEM_GENERATORS = {
     "thermal_scanner": thermal_scanner,
 }
 
+BLOCK_ITEMS = (
+    "portable_pump",
+    "hose_splitter",
+    "fire_hose",
+    "intake_hose",
+    "water_tank_small",
+    "water_tank_medium",
+    "water_tank_large",
+    "portable_sprinkler",
+    "command_post",
+)
+
+REGISTERED_ITEMS = BLOCK_ITEMS + tuple(ITEM_GENERATORS)
+
+
+def generate_client_items() -> None:
+    CLIENT_ITEMS.mkdir(parents=True, exist_ok=True)
+    for name in REGISTERED_ITEMS:
+        definition = {
+            "model": {
+                "type": "minecraft:model",
+                "model": f"peterwolfs_forestfire:item/{name}",
+            }
+        }
+        (CLIENT_ITEMS / f"{name}.json").write_text(
+            json.dumps(definition, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
 
 def material_texture(base, dark, light, pattern: str = "speckle") -> Canvas:
     c = Canvas(16, 16, base)
@@ -738,13 +768,14 @@ def generate_models() -> None:
 def main() -> None:
     for name, generator in ITEM_GENERATORS.items():
         write_png(ITEM_TEXTURES / f"{name}.png", generator())
+    generate_client_items()
     generate_block_textures()
     generate_equipment()
     generate_mod_icon()
     generate_models()
     print(
-        f"Generated {len(ITEM_GENERATORS)} item icons, 18 block/material textures, "
-        "2 armor textures, 10 block models and the 128px mod icon."
+        f"Generated {len(ITEM_GENERATORS)} item icons, {len(REGISTERED_ITEMS)} client item definitions, "
+        "18 block/material textures, 2 armor textures, 10 block models and the 128px mod icon."
     )
 
 
