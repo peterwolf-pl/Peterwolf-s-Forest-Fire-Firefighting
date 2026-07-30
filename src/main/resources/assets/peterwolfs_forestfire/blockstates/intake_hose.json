@@ -1,10 +1,18 @@
 {
   "variants": {
-    "waterlogged=false": {
+    "axis=x,waterlogged=false": {
       "model": "peterwolfs_forestfire:block/intake_hose"
     },
-    "waterlogged=true": {
+    "axis=x,waterlogged=true": {
       "model": "peterwolfs_forestfire:block/intake_hose"
+    },
+    "axis=z,waterlogged=false": {
+      "model": "peterwolfs_forestfire:block/intake_hose",
+      "y": 90
+    },
+    "axis=z,waterlogged=true": {
+      "model": "peterwolfs_forestfire:block/intake_hose",
+      "y": 90
     }
   }
 }

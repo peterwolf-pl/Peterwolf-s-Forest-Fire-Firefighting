@@ -1,16 +1,32 @@
 {
   "variants": {
-    "pressurised=false,waterlogged=false": {
+    "axis=x,pressurised=false,waterlogged=false": {
       "model": "peterwolfs_forestfire:block/fire_hose"
     },
-    "pressurised=true,waterlogged=false": {
+    "axis=x,pressurised=true,waterlogged=false": {
+      "model": "peterwolfs_forestfire:block/fire_hose_pressurised"
+    },
+    "axis=x,pressurised=false,waterlogged=true": {
       "model": "peterwolfs_forestfire:block/fire_hose"
     },
-    "pressurised=false,waterlogged=true": {
-      "model": "peterwolfs_forestfire:block/fire_hose"
+    "axis=x,pressurised=true,waterlogged=true": {
+      "model": "peterwolfs_forestfire:block/fire_hose_pressurised"
     },
-    "pressurised=true,waterlogged=true": {
-      "model": "peterwolfs_forestfire:block/fire_hose"
+    "axis=z,pressurised=false,waterlogged=false": {
+      "model": "peterwolfs_forestfire:block/fire_hose",
+      "y": 90
+    },
+    "axis=z,pressurised=true,waterlogged=false": {
+      "model": "peterwolfs_forestfire:block/fire_hose_pressurised",
+      "y": 90
+    },
+    "axis=z,pressurised=false,waterlogged=true": {
+      "model": "peterwolfs_forestfire:block/fire_hose",
+      "y": 90
+    },
+    "axis=z,pressurised=true,waterlogged=true": {
+      "model": "peterwolfs_forestfire:block/fire_hose_pressurised",
+      "y": 90
     }
   }
 }

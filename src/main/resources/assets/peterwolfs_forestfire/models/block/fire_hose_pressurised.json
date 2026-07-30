@@ -98,22 +98,22 @@
     }
   },
   "textures": {
-    "hose": "peterwolfs_forestfire:block/fire_hose",
+    "hose": "peterwolfs_forestfire:block/fire_hose_pressurised",
     "brass": "peterwolfs_forestfire:block/material/brass",
     "dark": "peterwolfs_forestfire:block/material/rubber",
-    "particle": "peterwolfs_forestfire:block/fire_hose"
+    "particle": "peterwolfs_forestfire:block/fire_hose_pressurised"
   },
   "elements": [
     {
       "from": [
         0,
         0,
-        6.0
+        5.5
       ],
       "to": [
         16,
-        2.5,
-        10.0
+        3.5,
+        10.5
       ],
       "faces": {
         "north": {
@@ -140,12 +140,12 @@
       "from": [
         0,
         0,
-        5.5
+        5.0
       ],
       "to": [
         2,
-        3.0,
-        10.5
+        4.0,
+        11.0
       ],
       "faces": {
         "north": {
@@ -172,12 +172,12 @@
       "from": [
         14,
         0,
-        5.5
+        5.0
       ],
       "to": [
         16,
-        3.0,
-        10.5
+        4.0,
+        11.0
       ],
       "faces": {
         "north": {
@@ -204,12 +204,12 @@
       "from": [
         2,
         0.25,
-        5.75
+        5.25
       ],
       "to": [
         2.5,
-        2.75,
-        10.25
+        3.75,
+        10.75
       ],
       "faces": {
         "north": {
@@ -236,12 +236,12 @@
       "from": [
         13.5,
         0.25,
-        5.75
+        5.25
       ],
       "to": [
         14,
-        2.75,
-        10.25
+        3.75,
+        10.75
       ],
       "faces": {
         "north": {

@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -22,14 +23,18 @@ public class HoseBlock extends Block implements SimpleWaterloggedBlock {
 	public static final MapCodec<HoseBlock> CODEC = simpleCodec(HoseBlock::new);
 	public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
 	public static final BooleanProperty PRESSURISED = BooleanProperty.create("pressurised");
-	private static final VoxelShape SHAPE = Block.box(1.0, 0.0, 1.0, 15.0, 3.0, 15.0);
-	private static final VoxelShape SHAPE_PRESSURE = Block.box(1.0, 0.0, 1.0, 15.0, 4.0, 15.0);
+	public static final EnumProperty<Direction.Axis> AXIS = BlockStateProperties.HORIZONTAL_AXIS;
+	private static final VoxelShape SHAPE_X = Block.box(0.0, 0.0, 5.5, 16.0, 3.0, 10.5);
+	private static final VoxelShape SHAPE_Z = Block.box(5.5, 0.0, 0.0, 10.5, 3.0, 16.0);
+	private static final VoxelShape SHAPE_PRESSURE_X = Block.box(0.0, 0.0, 5.0, 16.0, 4.0, 11.0);
+	private static final VoxelShape SHAPE_PRESSURE_Z = Block.box(5.0, 0.0, 0.0, 11.0, 4.0, 16.0);
 
 	public HoseBlock(BlockBehaviour.Properties properties) {
 		super(properties);
 		this.registerDefaultState(this.stateDefinition.any()
 			.setValue(WATERLOGGED, false)
-			.setValue(PRESSURISED, false));
+			.setValue(PRESSURISED, false)
+			.setValue(AXIS, Direction.Axis.X));
 	}
 
 	@Override
@@ -39,18 +44,24 @@ public class HoseBlock extends Block implements SimpleWaterloggedBlock {
 
 	@Override
 	protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-		builder.add(WATERLOGGED, PRESSURISED);
+		builder.add(WATERLOGGED, PRESSURISED, AXIS);
 	}
 
 	@Override
 	public BlockState getStateForPlacement(BlockPlaceContext context) {
 		FluidState fluid = context.getLevel().getFluidState(context.getClickedPos());
-		return this.defaultBlockState().setValue(WATERLOGGED, fluid.getType() == Fluids.WATER);
+		return this.defaultBlockState()
+			.setValue(WATERLOGGED, fluid.getType() == Fluids.WATER)
+			.setValue(AXIS, context.getHorizontalDirection().getAxis());
 	}
 
 	@Override
 	protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-		return state.getValue(PRESSURISED) ? SHAPE_PRESSURE : SHAPE;
+		boolean xAxis = state.getValue(AXIS) == Direction.Axis.X;
+		if (state.getValue(PRESSURISED)) {
+			return xAxis ? SHAPE_PRESSURE_X : SHAPE_PRESSURE_Z;
+		}
+		return xAxis ? SHAPE_X : SHAPE_Z;
 	}
 
 	@Override
