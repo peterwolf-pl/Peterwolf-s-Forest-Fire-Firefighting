@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Server-side aerial water payloads with a per-tick suppression budget.
+ * Aircraft dumps are intentionally much stronger than hand nozzles.
  */
 public final class WaterDropSimulator {
 	private static final Map<ServerLevel, WaterDropSimulator> INSTANCES = new ConcurrentHashMap<>();
@@ -42,7 +43,6 @@ public final class WaterDropSimulator {
 	public void spawn(AerialWaterPayload payload) {
 		ForestFireConfig.Data.FirefightingAircraft cfg = ForestFireConfig.get().firefightingAircraft;
 		if (payloads.size() >= cfg.maxActiveWaterPayloads) {
-			// Drop oldest to keep budget
 			payloads.remove(0);
 		}
 		payloads.add(payload);
@@ -59,7 +59,6 @@ public final class WaterDropSimulator {
 			AerialWaterPayload payload = it.next();
 			payload.age++;
 
-			// Gravity + light drag + wind drift
 			double windScale = 0.012D * wind.speed();
 			Vec3 windVec = new Vec3(wind.dx() * windScale, 0.0D, wind.dz() * windScale);
 			payload.velocity = payload.velocity.add(0.0D, -0.04D, 0.0D).scale(0.99D).add(windVec);
@@ -81,18 +80,20 @@ public final class WaterDropSimulator {
 				continue;
 			}
 
-			// Mid-air pass through burning crown: light cooling along path
-			if (opsThisTick < budget && level.getBlockState(pos).is(Blocks.FIRE)) {
-				if (ForestFireApi.applyWater(level, pos, payload.strength * 0.35F, 1.0F)) {
+			// Stronger mid-air crown knockdown
+			if (opsThisTick < budget && (level.getBlockState(pos).is(Blocks.FIRE)
+				|| level.getBlockState(pos).is(Blocks.SOUL_FIRE))) {
+				float midAir = payload.strength * cfg.aerialSuppressionMultiplier * 0.85F;
+				if (ForestFireApi.applyWater(level, pos, midAir, 2.0F)) {
 					opsThisTick++;
-					payload.remainingUnits = Math.max(0, payload.remainingUnits - 4);
+					payload.remainingUnits = Math.max(0, payload.remainingUnits - 2);
 				}
+				level.removeBlock(pos, false);
 			}
 
 			if (payload.isDead() || opsThisTick >= budget) {
 				if (opsThisTick >= budget && !payload.isDead()) {
-					// Force impact with remaining water when budget exhausted this tick
-					int ops = suppress(level, pos, payload, Math.max(1, budget / 8));
+					int ops = suppress(level, pos, payload, Math.max(8, budget / 4));
 					opsThisTick += ops;
 					totalAffectedBlocks += ops;
 				}
@@ -106,40 +107,59 @@ public final class WaterDropSimulator {
 			return 0;
 		}
 		ForestFireConfig.Data.FirefightingAircraft cfg = ForestFireConfig.get().firefightingAircraft;
-		float radius = payload.radius;
-		int r = Math.max(1, Math.round(radius));
-		float strength = payload.strength * Mth.clamp(payload.remainingUnits / 80.0F, 0.25F, 1.5F);
+		float radius = Math.max(payload.radius, cfg.dropBaseRadius * 0.85F);
+		int r = Math.max(2, Math.round(radius));
+		// Heavy water mass → high cooling; no soft 1.5× cap like the old formula
+		float massScale = Mth.clamp(payload.remainingUnits / 40.0F, 0.75F, 4.0F);
+		float strength = payload.strength * cfg.aerialSuppressionMultiplier * massScale;
 		int used = 0;
 		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-		// Elongated footprint along residual horizontal velocity
+
 		Vec3 horiz = new Vec3(payload.velocity.x, 0.0D, payload.velocity.z);
 		double horizLen = horiz.length();
 		Vec3 trail = horizLen > 1.0E-4D ? horiz.normalize() : Vec3.ZERO;
+		// Perpendicular for wider corridor
+		Vec3 side = new Vec3(-trail.z, 0.0D, trail.x);
 
-		for (int i = 0; i <= r + 2 && used < remainingBudget; i++) {
-			Vec3 sample = new Vec3(impact.getX() + 0.5, impact.getY(), impact.getZ() + 0.5)
-				.subtract(trail.scale(i * 0.85D));
-			cursor.set(sample.x, sample.y, sample.z);
-			// Find solid / surface near sample
-			for (int dy = 2; dy >= -3; dy--) {
-				BlockPos p = cursor.offset(0, dy, 0);
-				if (ForestFireApi.applyWater(level, p, strength * (1.0F - i * 0.08F), radius * 0.65F)) {
-					used++;
-					break;
-				}
-				if (level.getBlockState(p).is(Blocks.FIRE) || level.getBlockState(p).is(Blocks.SOUL_FIRE)) {
-					level.removeBlock(p, false);
-					ForestFireApi.applyWater(level, p.below(), strength, radius * 0.5F);
-					used++;
-					break;
+		int trailLen = r + 6;
+		int halfWidth = Math.max(1, r / 2);
+
+		for (int i = 0; i <= trailLen && used < remainingBudget; i++) {
+			float alongFalloff = 1.0F - Math.min(0.75F, i * 0.06F);
+			for (int s = -halfWidth; s <= halfWidth && used < remainingBudget; s++) {
+				float sideFalloff = 1.0F - Math.min(0.7F, Math.abs(s) * 0.18F);
+				Vec3 sample = new Vec3(impact.getX() + 0.5, impact.getY(), impact.getZ() + 0.5)
+					.subtract(trail.scale(i * 0.9D))
+					.add(side.scale(s * 0.95D));
+				cursor.set(sample.x, sample.y, sample.z);
+
+				float localStrength = strength * alongFalloff * sideFalloff;
+				float localRadius = Math.max(1.5F, radius * 0.85F * sideFalloff);
+
+				for (int dy = 3; dy >= -4; dy--) {
+					BlockPos p = cursor.offset(0, dy, 0);
+					boolean hit = ForestFireApi.applyWater(level, p, localStrength, localRadius);
+					if (level.getBlockState(p).is(Blocks.FIRE) || level.getBlockState(p).is(Blocks.SOUL_FIRE)) {
+						level.removeBlock(p, false);
+						ForestFireApi.applyWater(level, p.below(), localStrength * 1.1F, localRadius);
+						hit = true;
+					}
+					if (hit) {
+						used++;
+						// Soak neighbours once for hard knockdown
+						if (used < remainingBudget) {
+							ForestFireApi.applyWater(level, p.north(), localStrength * 0.55F, 1.2F);
+							ForestFireApi.applyWater(level, p.south(), localStrength * 0.55F, 1.2F);
+							ForestFireApi.applyWater(level, p.east(), localStrength * 0.55F, 1.2F);
+							ForestFireApi.applyWater(level, p.west(), localStrength * 0.55F, 1.2F);
+							used += 2;
+						}
+						break;
+					}
 				}
 			}
 		}
 
-		// Wetness duration override for aerial drops
-		if (cfg.wetnessDurationTicks > 0) {
-			// applyWater already marks wet via FireSimulation; config wetness is shared
-		}
 		payload.remainingUnits = 0;
 		return used;
 	}

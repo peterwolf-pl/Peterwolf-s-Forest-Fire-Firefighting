@@ -239,16 +239,23 @@ public final class ForestFireConfig {
 			/** Extra mass factor at full tank (added on top of 1.0 empty). */
 			public float waterWeightPhysicsMultiplier = 1.0F;
 			public float maxCargoMassBonus = 0.55F;
-			public int wetnessDurationTicks = 2400;
-			public int maximumSuppressionOperationsPerTick = 500;
+			/** Wetness duration from aerial drops (ticks). Longer = harder reignition. */
+			public int wetnessDurationTicks = 6000;
+			public int maximumSuppressionOperationsPerTick = 1800;
 			public boolean enableSubsystemDamage = false;
 			public boolean autoRetractHoseAtUnsafeSpeed = true;
 			public double autoRetractSpeed = 1.05;
 			public int hoseNotOverWaterTimeoutTicks = 40;
-			public float dropStrength = 1.55F;
-			public float dropBaseRadius = 2.5F;
-			public float dropRadiusPerAltitude = 0.12F;
-			public int maxActiveWaterPayloads = 48;
+			/**
+			 * Aerial drop cooling multiplier into {@code FireSimulation.applyWater}.
+			 * Much stronger than hand nozzle — a proper water bomber dump.
+			 */
+			public float dropStrength = 5.5F;
+			public float dropBaseRadius = 6.5F;
+			public float dropRadiusPerAltitude = 0.22F;
+			/** Extra multiplier applied only to aircraft water impacts. */
+			public float aerialSuppressionMultiplier = 2.4F;
+			public int maxActiveWaterPayloads = 64;
 			public int waterSyncThreshold = 25;
 			public boolean finiteWaterExtraction = false;
 			public boolean debugMetrics = false;
@@ -269,9 +276,10 @@ public final class ForestFireConfig {
 				maximumSuppressionOperationsPerTick = Math.max(10, Math.min(5000, maximumSuppressionOperationsPerTick));
 				autoRetractSpeed = clampD(autoRetractSpeed, maximumScoopingSpeed, 5.0);
 				hoseNotOverWaterTimeoutTicks = Math.max(5, Math.min(200, hoseNotOverWaterTimeoutTicks));
-				dropStrength = clamp(dropStrength, 0.1F, 10.0F);
-				dropBaseRadius = clamp(dropBaseRadius, 0.5F, 12.0F);
+				dropStrength = clamp(dropStrength, 0.1F, 20.0F);
+				dropBaseRadius = clamp(dropBaseRadius, 0.5F, 16.0F);
 				dropRadiusPerAltitude = clamp(dropRadiusPerAltitude, 0.0F, 1.0F);
+				aerialSuppressionMultiplier = clamp(aerialSuppressionMultiplier, 0.25F, 8.0F);
 				maxActiveWaterPayloads = Math.max(4, Math.min(256, maxActiveWaterPayloads));
 				waterSyncThreshold = Math.max(1, Math.min(1000, waterSyncThreshold));
 			}

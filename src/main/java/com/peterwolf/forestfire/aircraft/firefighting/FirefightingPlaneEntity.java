@@ -511,7 +511,7 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 			this.blockPosition().getZ()
 		));
 		float radius = cfg.dropBaseRadius + (float) altitude * cfg.dropRadiusPerAltitude;
-		radius = Mth.clamp(radius, 1.0F, 10.0F);
+		radius = Mth.clamp(radius, 2.0F, 14.0F);
 
 		AerialWaterPayload payload = new AerialWaterPayload(
 			bay, releaseVel, drain, cfg.dropStrength, radius
