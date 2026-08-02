@@ -20,16 +20,36 @@ loom {
 	}
 }
 
+// Optional soft dependency: Peterwolf's Planes (firefighting water bomber).
+// Build planes first: `../peterwolfs-planes/gradlew jar`
+def planesJar = file("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
+def hasPlanesApi = planesJar.exists()
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// Optional soft dependency: Peterwolf's Planes (firefighting water bomber).
-	// Build planes first: `../peterwolfs-planes/gradlew jar`
-	// Use named configurations that Loom always provides.
-	compileOnly files("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
-	localRuntime files("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
+	if (hasPlanesApi) {
+		compileOnly files(planesJar)
+		localRuntime files(planesJar)
+	}
+}
+
+// When Planes JAR is missing, exclude hard-dependent sources so the hose/fire mod still builds.
+if (!hasPlanesApi) {
+	logger.lifecycle("Peterwolf's Planes JAR not found at ${planesJar} — compiling without firefighting aircraft sources.")
+	sourceSets.main.java.exclude(
+		'**/aircraft/**',
+		'**/compat/planes/**',
+		'**/command/FireplaneCommands.java',
+		'**/network/firefighting/**'
+	)
+	sourceSets.client.java.exclude(
+		'**/aircraft/**',
+		'**/compat/planes/**',
+		'**/client/aircraft/**'
+	)
 }
 
 sourceSets {

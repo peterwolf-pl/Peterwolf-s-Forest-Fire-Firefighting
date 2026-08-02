@@ -25,6 +25,7 @@ public final class HoseInventoryService {
 		for (int i = 0; i < inv.getContainerSize(); i++) {
 			ItemStack stack = inv.getItem(i);
 			if (stack.getItem() instanceof HoseRollItem) {
+				HoseRollItem.ensureInitialized(stack);
 				total += HoseRollItem.getRemaining(stack);
 			}
 		}
@@ -51,6 +52,7 @@ public final class HoseInventoryService {
 			if (!(stack.getItem() instanceof HoseRollItem)) {
 				continue;
 			}
+			HoseRollItem.ensureInitialized(stack);
 			int have = HoseRollItem.getRemaining(stack);
 			if (have <= 0) {
 				continue;

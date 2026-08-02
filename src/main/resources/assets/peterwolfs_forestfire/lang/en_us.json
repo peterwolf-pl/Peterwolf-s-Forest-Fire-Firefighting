@@ -98,5 +98,10 @@
 	"message.peterwolfs_forestfire.tank_full": "TANK FULL",
 	"message.peterwolfs_forestfire.tank_empty": "TANK EMPTY",
 	"message.peterwolfs_forestfire.hose_auto_retract_speed": "Intake hose auto-retracted (speed)",
-	"message.peterwolfs_forestfire.nozzle_wrong_pump": "This nozzle is assigned to a different pump."
+	"message.peterwolfs_forestfire.nozzle_wrong_pump": "This nozzle is assigned to a different pump.",
+	"message.peterwolfs_forestfire.hose_roll_empty": "Hose roll is empty.",
+	"message.peterwolfs_forestfire.hose_roll_select_pump": "Right-click the Portable Pump with the hose roll first.",
+	"message.peterwolfs_forestfire.hose_roll_intake_ready": "Intake ready (%s m) — right-click water, tank or strainer.",
+	"message.peterwolfs_forestfire.hose_roll_output_ready": "Attack hose ready (%s m) — right-click nozzle on pump, or ground nozzle / splitter.",
+	"message.peterwolfs_forestfire.hose_roll_output_next": "Attack side selected — place nozzle (right-click pump with nozzle) or click ground nozzle / splitter."
 }

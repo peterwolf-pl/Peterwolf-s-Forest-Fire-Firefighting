@@ -4,6 +4,15 @@ Player places pump, intake endpoint (via connector), and nozzle. The mod generat
 
 ## Gameplay
 
+### Hose roll → pump (primary)
+
+1. Hold a **Hose Roll**
+2. Right-click the **Portable Pump**
+   - **back face** = intake
+   - **front face** = attack output
+3. Then right-click **water** (intake) or use **nozzle on pump** (attack)
+
+
 1. Place **Portable Fire Pump** near water.
 2. Hold **Hose Connector Tool** → right-click pump **back face** (intake) → right-click water / tank / strainer.
 3. Intake hose appears; pump recognises the source.
