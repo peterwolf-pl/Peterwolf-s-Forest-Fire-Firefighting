@@ -103,5 +103,6 @@
 	"message.peterwolfs_forestfire.hose_roll_select_pump": "Right-click the Portable Pump with the hose roll first.",
 	"message.peterwolfs_forestfire.hose_roll_intake_ready": "Intake ready (%s m) — right-click water, tank or strainer.",
 	"message.peterwolfs_forestfire.hose_roll_output_ready": "Attack hose ready (%s m) — right-click nozzle on pump, or ground nozzle / splitter.",
-	"message.peterwolfs_forestfire.hose_roll_output_next": "Attack side selected — place nozzle (right-click pump with nozzle) or click ground nozzle / splitter."
+	"message.peterwolfs_forestfire.hose_roll_output_next": "Attack side selected — place nozzle (right-click pump with nozzle) or click ground nozzle / splitter.",
+	"message.peterwolfs_forestfire.pump_hoses_cleared": "Pump removed — cleared %s hose line(s) and returned hose material."
 }

@@ -89,6 +89,69 @@ public final class HoseEndpointManager extends SavedData {
 		setDirty();
 	}
 
+	public void removeEndpoint(UUID id) {
+		if (endpoints.remove(id) != null) {
+			setDirty();
+		}
+	}
+
+	/**
+	 * Remove every endpoint still assigned to a destroyed pump.
+	 * Ground nozzles are broken into free items; held nozzles lose their link.
+	 */
+	public void purgePump(ServerLevel level, BlockPos pumpPos, @Nullable ServerPlayer preferredPlayer) {
+		List<UUID> doomed = new ArrayList<>();
+		for (HoseEndpoint ep : endpoints.values()) {
+			if (ep.pumpPos != null && ep.pumpPos.equals(pumpPos)) {
+				doomed.add(ep.id);
+			} else if (ep.anchorPos.equals(pumpPos)) {
+				doomed.add(ep.id);
+			}
+		}
+		for (UUID id : doomed) {
+			HoseEndpoint ep = endpoints.get(id);
+			if (ep == null) {
+				continue;
+			}
+			ep.closeValve();
+			ep.connected = false;
+			if (ep.location == NozzleLocationState.GROUND
+				|| level.getBlockState(ep.endpointPos).is(ModBlocks.GROUND_NOZZLE)) {
+				if (level.getBlockState(ep.endpointPos).is(ModBlocks.GROUND_NOZZLE)) {
+					level.removeBlock(ep.endpointPos, false);
+				}
+				ItemStack free = new ItemStack(ModItems.FIRE_HOSE_NOZZLE);
+				level.addFreshEntity(new ItemEntity(
+					level,
+					ep.endpointPos.getX() + 0.5,
+					ep.endpointPos.getY() + 0.5,
+					ep.endpointPos.getZ() + 0.5,
+					free
+				));
+			} else if (ep.operatorId != null) {
+				ServerPlayer op = preferredPlayer != null && preferredPlayer.getUUID().equals(ep.operatorId)
+					? preferredPlayer
+					: level.getServer().getPlayerList().getPlayer(ep.operatorId);
+				if (op != null) {
+					for (int i = 0; i < op.getInventory().getContainerSize(); i++) {
+						ItemStack stack = op.getInventory().getItem(i);
+						if (!stack.is(ModItems.FIRE_HOSE_NOZZLE)) {
+							continue;
+						}
+						String sid = stack.get(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID);
+						if (id.toString().equals(sid)) {
+							stack.remove(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID);
+						}
+					}
+				}
+			}
+			endpoints.remove(id);
+		}
+		if (!doomed.isEmpty()) {
+			setDirty();
+		}
+	}
+
 	public Optional<HoseEndpoint> byOperator(UUID playerId) {
 		for (HoseEndpoint ep : endpoints.values()) {
 			if (ep.isHeldBy(playerId)) {

@@ -428,6 +428,8 @@ public final class HoseConnectionManager extends SavedData {
 			HoseConnection c = it.next().getValue();
 			if (c.sourcePos.equals(pumpPos) || c.targetPos.equals(pumpPos)) {
 				retract(level, player, c);
+				cleanupEndpointForConnection(level, player, c, false);
+				syncRemove(level, c);
 				it.remove();
 				n++;
 			}
@@ -439,6 +441,123 @@ public final class HoseConnectionManager extends SavedData {
 			syncAllNearby(level, pumpPos);
 		}
 		return n;
+	}
+
+	/**
+	 * Pump was destroyed/broken — remove every hose remnant tied to this pump:
+	 * connections, client render, nozzle endpoints, ground nozzle blocks.
+	 * Hose material returns to {@code player} if present, otherwise drops at the pump.
+	 */
+	public int clearAllOnPumpDestroyed(ServerLevel level, BlockPos pumpPos, @Nullable ServerPlayer player) {
+		int n = 0;
+		int totalHose = 0;
+		List<HoseConnection> doomed = new ArrayList<>();
+		for (HoseConnection c : connections.values()) {
+			if (c.sourcePos.equals(pumpPos) || c.targetPos.equals(pumpPos)) {
+				doomed.add(c);
+			}
+		}
+		// Also catch attack lines whose endpoint is still bound to this pump
+		for (HoseConnection c : connections.values()) {
+			if (doomed.contains(c)) {
+				continue;
+			}
+			if (c.type == HoseConnectionType.ATTACK && c.nozzleEndpointId != null) {
+				HoseEndpoint ep = HoseEndpointManager.get(level).get(c.nozzleEndpointId).orElse(null);
+				if (ep != null && ep.pumpPos != null && ep.pumpPos.equals(pumpPos)) {
+					doomed.add(c);
+				}
+			}
+		}
+
+		for (HoseConnection c : doomed) {
+			int returnAmt = ForestFireConfig.get().returnFullHoseLength
+				? c.deployedLength
+				: (int) Math.ceil(c.currentPathLength);
+			totalHose += Math.max(0, returnAmt);
+
+			// Close valves / free nozzles / remove ground blocks
+			cleanupEndpointForConnection(level, player, c, true);
+
+			c.connected = false;
+			c.pressurized = false;
+			syncRemove(level, c);
+			connections.remove(c.connectionId);
+			n++;
+		}
+
+		// Any leftover endpoints still pointing at this pump
+		HoseEndpointManager.get(level).purgePump(level, pumpPos, player);
+
+		if (totalHose > 0) {
+			if (player != null) {
+				HoseInventoryService.returnHose(player, totalHose, false);
+			} else {
+				HoseInventoryService.dropHoseAt(level, pumpPos, totalHose);
+			}
+		}
+
+		if (n > 0) {
+			setDirty();
+			broadcastDirty = true;
+			syncAllInDimension(level);
+			ForestFireMod.LOGGER.debug("Cleared {} hose connection(s) after pump removed at {}", n, pumpPos);
+		}
+		return n;
+	}
+
+	/**
+	 * @param orphanNozzle if true, drop/convert connected nozzles to free items and remove ground blocks
+	 */
+	private void cleanupEndpointForConnection(
+		ServerLevel level,
+		@Nullable ServerPlayer player,
+		HoseConnection c,
+		boolean orphanNozzle
+	) {
+		if (c.nozzleEndpointId == null) {
+			return;
+		}
+		HoseEndpointManager mgr = HoseEndpointManager.get(level);
+		mgr.get(c.nozzleEndpointId).ifPresent(ep -> {
+			ep.closeValve();
+			ep.connected = false;
+			if (!orphanNozzle) {
+				return;
+			}
+			if (ep.location == NozzleLocationState.GROUND
+				|| level.getBlockState(ep.endpointPos).is(ModBlocks.GROUND_NOZZLE)) {
+				if (level.getBlockState(ep.endpointPos).is(ModBlocks.GROUND_NOZZLE)) {
+					level.removeBlock(ep.endpointPos, false);
+				}
+				// Drop free nozzle at ground position
+				net.minecraft.world.item.ItemStack free =
+					new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.FIRE_HOSE_NOZZLE);
+				level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(
+					level,
+					ep.endpointPos.getX() + 0.5,
+					ep.endpointPos.getY() + 0.5,
+					ep.endpointPos.getZ() + 0.5,
+					free
+				));
+			} else if (ep.location == NozzleLocationState.HELD && ep.operatorId != null) {
+				ServerPlayer op = level.getServer().getPlayerList().getPlayer(ep.operatorId);
+				if (op != null) {
+					// Strip connected NBT — leave free nozzle item
+					for (int i = 0; i < op.getInventory().getContainerSize(); i++) {
+						net.minecraft.world.item.ItemStack stack = op.getInventory().getItem(i);
+						if (!stack.is(com.peterwolf.forestfire.item.ModItems.FIRE_HOSE_NOZZLE)) {
+							continue;
+						}
+						String id = stack.get(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID);
+						if (ep.id.toString().equals(id)) {
+							stack.remove(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID);
+						}
+					}
+				}
+			}
+			mgr.removeEndpoint(ep.id);
+		});
 	}
 
 	public boolean disconnectByNozzleEndpoint(ServerLevel level, ServerPlayer player, UUID endpointId) {

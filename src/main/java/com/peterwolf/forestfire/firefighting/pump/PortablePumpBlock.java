@@ -2,6 +2,7 @@ package com.peterwolf.forestfire.firefighting.pump;
 
 import com.mojang.serialization.MapCodec;
 import com.peterwolf.forestfire.block.ModBlockEntities;
+import com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager;
 import com.peterwolf.forestfire.item.HoseConnectorItem;
 import com.peterwolf.forestfire.item.HoseRollItem;
 import com.peterwolf.forestfire.item.ModItems;
@@ -9,6 +10,7 @@ import com.peterwolf.forestfire.item.PumpFuelCanItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -17,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
@@ -28,6 +31,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -152,6 +156,37 @@ public class PortablePumpBlock extends BaseEntityBlock {
 			return InteractionResult.CONSUME;
 		}
 		return InteractionResult.PASS;
+	}
+
+	/**
+	 * Breaking the pump clears every automatic hose line, render path and nozzle link.
+	 */
+	@Override
+	public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+		if (!level.isClientSide() && level instanceof ServerLevel serverLevel) {
+			ServerPlayer sp = player instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+			int n = HoseConnectionManager.get(serverLevel).clearAllOnPumpDestroyed(serverLevel, pos, sp);
+			if (sp != null && n > 0) {
+				sp.sendSystemMessage(Component.translatable(
+					"message.peterwolfs_forestfire.pump_hoses_cleared", n));
+			}
+		}
+		return super.playerWillDestroy(level, pos, state, player);
+	}
+
+	/** Creative mid-click / programmatic destroy path. */
+	@Override
+	public void destroy(LevelAccessor level, BlockPos pos, BlockState state) {
+		if (level instanceof ServerLevel serverLevel) {
+			HoseConnectionManager.get(serverLevel).clearAllOnPumpDestroyed(serverLevel, pos, null);
+		}
+		super.destroy(level, pos, state);
+	}
+
+	@Override
+	public void wasExploded(ServerLevel level, BlockPos pos, Explosion explosion) {
+		HoseConnectionManager.get(level).clearAllOnPumpDestroyed(level, pos, null);
+		super.wasExploded(level, pos, explosion);
 	}
 
 	private static boolean isHoseTool(ItemStack stack) {

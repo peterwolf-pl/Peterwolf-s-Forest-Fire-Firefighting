@@ -3,6 +3,8 @@ package com.peterwolf.forestfire.firefighting.hose;
 import com.peterwolf.forestfire.config.ForestFireConfig;
 import com.peterwolf.forestfire.item.HoseRollItem;
 import com.peterwolf.forestfire.item.ModItems;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
@@ -114,6 +116,43 @@ public final class HoseInventoryService {
 		}
 		if (!player.getInventory().add(stack)) {
 			player.drop(stack, false);
+		}
+	}
+
+	/** Drop hose rolls at a world position (pump destroyed without a player inventory). */
+	public static void dropHoseAt(ServerLevel level, BlockPos pos, int amount) {
+		if (amount <= 0 || level == null) {
+			return;
+		}
+		int left = amount;
+		if (ForestFireConfig.get().hoseDamageLossEnabled) {
+			left = Math.max(0, (int) (left * 0.9));
+		}
+		double x = pos.getX() + 0.5;
+		double y = pos.getY() + 0.5;
+		double z = pos.getZ() + 0.5;
+		while (left > 0) {
+			int cap;
+			Item item;
+			if (left >= 64) {
+				cap = 64;
+				item = ModItems.HOSE_ROLL_LARGE;
+			} else if (left >= 32) {
+				cap = 32;
+				item = ModItems.HOSE_ROLL_STANDARD;
+			} else if (left >= 16) {
+				cap = 16;
+				item = ModItems.HOSE_ROLL_SMALL;
+			} else {
+				cap = left;
+				item = ModItems.HOSE_ROLL_SMALL;
+			}
+			ItemStack stack = new ItemStack(item);
+			if (item instanceof HoseRollItem) {
+				HoseRollItem.setRemaining(stack, cap);
+			}
+			level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(level, x, y, z, stack));
+			left -= cap;
 		}
 	}
 }
