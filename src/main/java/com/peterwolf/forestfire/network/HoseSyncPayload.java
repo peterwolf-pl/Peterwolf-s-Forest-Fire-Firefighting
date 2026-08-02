@@ -47,8 +47,9 @@ public record HoseSyncPayload(
 	public static HoseSyncPayload fromConnection(HoseConnection c, boolean removed) {
 		List<Float> coords = new ArrayList<>();
 		if (!removed && c.path != null) {
+			// Keep denser control points so client Catmull–Rom spline stays smooth
 			List<HoseControlPoint> pts = c.path.points();
-			int step = pts.size() > 48 ? 2 : 1;
+			int step = pts.size() > 80 ? 2 : 1;
 			for (int i = 0; i < pts.size(); i += step) {
 				Vec3 p = pts.get(i).position();
 				coords.add((float) p.x);

@@ -78,7 +78,8 @@ public final class HosePathGenerator {
 		}
 
 		// Decimate to control points (skip near-collinear terrain samples)
-		List<Vec3> simplified = simplify(route, 0.35);
+		// Keep denser anchors for client Catmull–Rom hose rendering
+		List<Vec3> simplified = simplify(route, 0.22);
 		for (int i = 1; i < simplified.size() - 1; i++) {
 			points.add(new HoseControlPoint(simplified.get(i), HosePointType.TERRAIN_POINT));
 		}
@@ -293,10 +294,10 @@ public final class HosePathGenerator {
 			// Keep if height change significant or direction change
 			double dy = Math.abs(p.y - lastKept.y);
 			double dist = p.distanceTo(lastKept);
-			if (dy > 0.45 || dist > 2.5) {
+			if (dy > 0.35 || dist > 1.75) {
 				out.add(p);
 				lastKept = p;
-			} else if (dist > tolerance && Math.abs(p.y - lastKept.y) > 0.12) {
+			} else if (dist > tolerance && Math.abs(p.y - lastKept.y) > 0.08) {
 				out.add(p);
 				lastKept = p;
 			}
