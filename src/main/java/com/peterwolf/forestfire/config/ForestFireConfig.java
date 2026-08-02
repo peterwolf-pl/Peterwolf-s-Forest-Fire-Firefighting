@@ -222,7 +222,8 @@ public final class ForestFireConfig {
 			public boolean enabled = true;
 			public int tankCapacity = 12000;
 			public int waterIntakeRatePerTick = 30;
-			public int waterReleaseRatePerTick = 80;
+			/** Units drained per tick while holding B (12000 capacity ≈ 2.7s at 220). */
+			public int waterReleaseRatePerTick = 220;
 			public double maximumWaterDistanceBlocks = 3.0;
 			/** Horizontal speed (blocks/tick) — matches Planes physics units. */
 			public double minimumScoopingSpeed = 0.25;
@@ -238,7 +239,7 @@ public final class ForestFireConfig {
 			public boolean autoRetractHoseAtUnsafeSpeed = true;
 			public double autoRetractSpeed = 1.05;
 			public int hoseNotOverWaterTimeoutTicks = 40;
-			public float dropStrength = 1.35F;
+			public float dropStrength = 1.55F;
 			public float dropBaseRadius = 2.5F;
 			public float dropRadiusPerAltitude = 0.12F;
 			public int maxActiveWaterPayloads = 48;
