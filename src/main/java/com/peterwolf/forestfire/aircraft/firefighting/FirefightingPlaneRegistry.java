@@ -32,7 +32,8 @@ public final class FirefightingPlaneRegistry {
 			BuiltInRegistries.ENTITY_TYPE,
 			ENTITY_KEY,
 			EntityType.Builder.<FirefightingPlaneEntity>of(FirefightingPlaneEntity::new, MobCategory.MISC)
-				.sized(3.64f, 2.2f)
+				// Wider/taller than large plane to match bulk water-tank airframe
+				.sized(4.0f, 2.55f)
 				.clientTrackingRange(10)
 				.build(ENTITY_KEY)
 		);

@@ -450,8 +450,8 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		WaterDropSimulator.get(server).recordCollectionCheck();
 		WaterProbe probe = this.probeWaterBelowNozzle(cfg.maximumWaterDistanceBlocks);
 		this.lastWaterDistance = probe.distance;
-
-		if (!probe.valid) {
+		// Scoop still requires within configured vertical range (probe reports surface distance).
+		if (!probe.valid || probe.distance < 0.0D || probe.distance > cfg.maximumWaterDistanceBlocks) {
 			this.notOverWaterTicks++;
 			this.setIntakeStatus(IntakeStatus.WATER_OUT_OF_RANGE);
 			if (this.notOverWaterTicks >= cfg.hoseNotOverWaterTimeoutTicks) {
@@ -580,10 +580,40 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 	 * Downward raycast from nozzle for water surface within maxDistance.
 	 */
 	public WaterProbe probeWaterBelowNozzle(double maxDistance) {
-		Vec3 nozzle = this.getHoseNozzlePosition(1.0F);
-		Vec3 end = nozzle.add(0.0D, -maxDistance - 0.5D, 0.0D);
+		return this.probeWaterBelow(this.getHoseNozzlePosition(1.0F), maxDistance);
+	}
+
+	/**
+	 * Altitude of the airframe above the water surface (blocks), for HUD.
+	 * Works client- and server-side. Returns NaN when no water is found below.
+	 */
+	public double getAltitudeAboveWater() {
+		WaterProbe probe = this.probeWaterBelow(this.position(), 96.0D);
+		if (!probe.valid || Double.isNaN(probe.surfaceY())) {
+			return Double.NaN;
+		}
+		return Math.max(0.0D, this.getY() - probe.surfaceY());
+	}
+
+	/**
+	 * Distance from the deployed hose nozzle to the water surface (blocks).
+	 * NaN if hose is stowed or no water in range of a long search.
+	 */
+	public double getNozzleAltitudeAboveWater() {
+		if (this.getHoseProgress() < 0.15F) {
+			return Double.NaN;
+		}
+		WaterProbe probe = this.probeWaterBelow(this.getHoseNozzlePosition(1.0F), 48.0D);
+		if (!probe.valid || Double.isNaN(probe.surfaceY())) {
+			return Double.NaN;
+		}
+		return Math.max(0.0D, this.getHoseNozzlePosition(1.0F).y - probe.surfaceY());
+	}
+
+	private WaterProbe probeWaterBelow(Vec3 from, double maxDistance) {
+		Vec3 end = from.add(0.0D, -maxDistance - 0.5D, 0.0D);
 		BlockHitResult hit = this.level().clip(new ClipContext(
-			nozzle, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, this
+			from, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, this
 		));
 
 		if (hit.getType() == HitResult.Type.MISS) {
@@ -603,6 +633,7 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 			if (belowFluid.is(FluidTags.WATER) || this.level().getBlockState(below).is(WATER_SOURCES)) {
 				water = true;
 				hitPos = below;
+				fluid = belowFluid;
 			}
 		}
 
@@ -610,8 +641,9 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		if (water && fluid.isEmpty()) {
 			surfaceY = hitPos.getY() + 1.0D;
 		}
-		double distance = nozzle.y - surfaceY;
-		if (!water || distance < 0.0D || distance > maxDistance) {
+		double distance = from.y - surfaceY;
+		// For scoop validity the caller still enforces max scoop range; HUD uses long searches.
+		if (!water) {
 			return WaterProbe.invalid(distance);
 		}
 		return new WaterProbe(true, distance, hitPos, surfaceY);

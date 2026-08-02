@@ -43,6 +43,8 @@ public class FirefightingPlaneRenderer extends EntityRenderer<PlaneEntity, Firef
 			state.doorProgress = plane.getDoorProgress(partialTick);
 			state.tankFill = AircraftWaterTank.fillRatio(plane.getWaterAmount());
 			state.releasing = plane.isReleasing();
+			double agl = plane.getAltitudeAboveWater();
+			state.waterAgl = Double.isNaN(agl) ? Float.NaN : (float) agl;
 		}
 	}
 

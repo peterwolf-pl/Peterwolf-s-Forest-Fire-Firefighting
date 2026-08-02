@@ -7,4 +7,6 @@ public class FirefightingPlaneRenderState extends PlaneRenderState {
 	public float doorProgress;
 	public float tankFill;
 	public boolean releasing;
+	/** Blocks above water surface; NaN if no water below. */
+	public float waterAgl = Float.NaN;
 }

@@ -112,8 +112,8 @@ public final class FirefightingPlanesClient {
 		Font font = client.font;
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
-		int boxWidth = 176;
-		int boxHeight = 78;
+		int boxWidth = 186;
+		int boxHeight = 92;
 		int boxX = (screenWidth - boxWidth) / 2;
 		int boxY = (screenHeight - boxHeight) / 2 + (int) (screenHeight * 0.18) + 62;
 
@@ -131,22 +131,48 @@ public final class FirefightingPlanesClient {
 			intakeColor = 0xFFFF5555;
 		}
 
+		// Height above water (plane + nozzle when hose is out)
+		double waterAgl = plane.getAltitudeAboveWater();
+		String waterAlt;
+		int waterAltColor = 0xFF88CCFF;
+		if (Double.isNaN(waterAgl)) {
+			waterAlt = "WATER AGL: —";
+			waterAltColor = 0xFF888888;
+		} else {
+			waterAlt = String.format("WATER AGL: %.1f m", waterAgl);
+			if (waterAgl <= 3.0D) {
+				waterAltColor = 0xFF55FF55; // in scoop band for airframe-level cue
+			} else if (waterAgl <= 8.0D) {
+				waterAltColor = 0xFFFFCC55;
+			} else {
+				waterAltColor = 0xFFFF8855;
+			}
+		}
+		double nozzleAgl = plane.getNozzleAltitudeAboveWater();
+		if (!Double.isNaN(nozzleAgl) && plane.isHoseDeployed()) {
+			waterAlt = String.format("WATER AGL: %.1f m  NOZZLE: %.1f m", waterAgl, nozzleAgl);
+			if (nozzleAgl <= 3.0D) {
+				waterAltColor = 0xFF55FFFF;
+			}
+		}
+
 		graphics.text(font, water, boxX + 8, boxY + 6, 0xFFFFFFFF, false);
-		graphics.text(font, drop, boxX + 8, boxY + 18, dropColor, false);
-		graphics.text(font, hose, boxX + 8, boxY + 30, 0xFFCCEEFF, false);
-		graphics.text(font, intake, boxX + 8, boxY + 42, intakeColor, false);
+		graphics.text(font, waterAlt, boxX + 8, boxY + 18, waterAltColor, false);
+		graphics.text(font, drop, boxX + 8, boxY + 30, dropColor, false);
+		graphics.text(font, hose, boxX + 8, boxY + 42, 0xFFCCEEFF, false);
+		graphics.text(font, intake, boxX + 8, boxY + 54, intakeColor, false);
 
 		String warn = warningLine(plane);
 		if (warn != null) {
-			graphics.text(font, warn, boxX + 8, boxY + 54, 0xFFFFAA00, false);
+			graphics.text(font, warn, boxX + 8, boxY + 66, 0xFFFFAA00, false);
 		} else {
-			graphics.text(font, "V arm  B drop  H hose", boxX + 8, boxY + 54, 0xFF8899AA, false);
+			graphics.text(font, "V arm  B drop  H hose", boxX + 8, boxY + 66, 0xFF8899AA, false);
 		}
 
 		if (plane.isDebugMode()) {
 			String dbg = String.format("dbg hose=%.2f door=%.2f dist=%.2f",
 				plane.getHoseProgress(), plane.getDoorProgress(), plane.getLastWaterDistance());
-			graphics.text(font, dbg, boxX + 8, boxY + 66, 0xFFFFFF55, false);
+			graphics.text(font, dbg, boxX + 8, boxY + 78, 0xFFFFFF55, false);
 		}
 	}
 
