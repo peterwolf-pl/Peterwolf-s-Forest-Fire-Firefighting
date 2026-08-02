@@ -118,7 +118,7 @@ Subsystem damage is **off by default** (config flag) for first stable version.
 2. Creative / craft: **Firefighting Water Bomber**.
 3. Place, board, fly with normal Planes controls (WASD throttle/rudder + look).
 4. **V** arm drop · hold **B** release water · **H** scoop hose.
-5. Scoop: deploy hose, fly forward over water with nozzle ≤ 3 blocks above surface.
+5. Scoop: deploy hose (H), low pass so the nozzle is **in the water** (not high above).
 6. Ops: `/fireplane tank fill`, `/fireplane hose deploy`, `/fireplane debug`.
 
 ### Config
