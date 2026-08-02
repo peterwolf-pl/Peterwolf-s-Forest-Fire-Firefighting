@@ -1,11 +1,13 @@
 package com.peterwolf.forestfire.aircraft.firefighting;
 
 import com.peterwolf.forestfire.ForestFireMod;
+import com.piotrek.peterwolfsplanes.PeterwolfsPlanesMod;
 import com.piotrek.peterwolfsplanes.item.PlaneItem;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -45,12 +47,36 @@ public final class FirefightingPlaneRegistry {
 			)
 		);
 
-		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES)
-			.register(output -> output.accept(ITEM));
+		// Planes creative tab (where players look for aircraft)
+		ResourceKey<net.minecraft.world.item.CreativeModeTab> planesTab = ResourceKey.create(
+			Registries.CREATIVE_MODE_TAB,
+			Identifier.fromNamespaceAndPath(PeterwolfsPlanesMod.MOD_ID, "group")
+		);
+		CreativeModeTabEvents.modifyOutputEvent(planesTab).register(output -> {
+			// Prefer next to the water plane; fall back to append
+			try {
+				output.insertAfter(PeterwolfsPlanesMod.WATER_PLANE_ITEM, ITEM);
+			} catch (RuntimeException ignored) {
+				output.accept(ITEM);
+			}
+		});
+
+		// Vanilla Tools tab (with other planes)
+		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(output -> {
+			try {
+				output.insertAfter(PeterwolfsPlanesMod.WATER_PLANE_ITEM, ITEM);
+			} catch (RuntimeException ignored) {
+				output.accept(ITEM);
+			}
+		});
+
+		// Forest Fire own creative tab
 		CreativeModeTabEvents.modifyOutputEvent(
 			ResourceKey.create(Registries.CREATIVE_MODE_TAB, ForestFireMod.id("main"))
 		).register(output -> output.accept(ITEM));
 
-		ForestFireMod.LOGGER.info("Registered firefighting_plane entity and item.");
+		ForestFireMod.LOGGER.info(
+			"Registered firefighting_plane entity/item — added to Planes tab, Tools, and Forest Fire tab."
+		);
 	}
 }
