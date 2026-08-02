@@ -35,6 +35,22 @@
 5. When piloting the water bomber, combat V/B are disabled; V/B/H drive drop/hose systems.
 6. Water drops are **lightweight server payloads** (not thousands of water blocks); suppression calls `applyWater`.
 
+### Soft dependency (product rule)
+
+**Neither mod requires the other.**
+
+| Installed | Result |
+|-----------|--------|
+| Only Planes | Normal aircraft; no Forest Fire types |
+| Only Forest Fire | Full firefighting; water bomber **not** registered |
+| **Both** | Firefighting Water Bomber available |
+
+Implementation:
+
+- `fabric.mod.json`: `peterwolfs_planes` under **`suggests` only** (never hard `depends`)
+- Runtime: `FabricLoader.isModLoaded("peterwolfs_planes")` then reflective `PlanesCompat.init()`
+- Entrypoints never statically import Planes types (avoids class-load crash when Planes is missing)
+
 ## 2. Files added / modified
 
 ### Planes (minimal)

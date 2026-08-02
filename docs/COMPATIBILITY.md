@@ -13,7 +13,10 @@
 - World-edit style tools (admin extinguish/remove available)
 - Other structure mods (wooden structures burn via fuel profiles)
 - **PeterWolf's Realistic Tree Felling** (recommended) — burning trees fall with full RTF animation and spread fire on impact
-- **Peterwolf's Planes** (optional) — enables the Firefighting Water Bomber (`peterwolfs_forestfire:firefighting_plane`). Soft dependency; Forest Fire still loads without Planes.
+- **Peterwolf's Planes** (optional, soft dependency) — **neither mod requires the other**.
+  - Forest Fire alone → full wildfire / hose / pump gameplay
+  - Planes alone → normal aircraft / paraglider
+  - **Both installed** → Firefighting Water Bomber (`peterwolfs_forestfire:firefighting_plane`) is registered at runtime via reflective bootstrap (`PlanesCompat`). No hard `depends` entry.
 
 ## Known interactions
 
