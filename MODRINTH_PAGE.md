@@ -145,7 +145,7 @@ I I I
 I H I
   I
 ```
-- **I** iron ingot · **H** fire hose segment *(legacy item if present in your pack)*
+- **I** iron ingot · **H** hose roll (small)
 
 #### Fire Hose Nozzle
 ```
@@ -153,7 +153,7 @@ I H I
 I H I
     I
 ```
-- **I** iron ingot · **H** fire hose segment *(legacy item if present)*
+- **I** iron ingot · **H** hose roll (small)
 
 #### Portable Sprinkler
 ```
@@ -161,7 +161,7 @@ I H I
   H
   I
 ```
-- **I** iron ingot · **H** fire hose segment *(legacy)*
+- **I** iron ingot · **H** hose roll (small)
 
 #### Water Tank — Small
 ```
