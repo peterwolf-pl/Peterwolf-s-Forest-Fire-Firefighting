@@ -37,7 +37,8 @@
 		"fabric-api": "*"
 	},
 	"suggests": {
-		"modmenu": "*"
+		"modmenu": "*",
+		"peterwolfs_realistic_tree_felling": "*"
 	},
 	"custom": {
 		"modmenu": {

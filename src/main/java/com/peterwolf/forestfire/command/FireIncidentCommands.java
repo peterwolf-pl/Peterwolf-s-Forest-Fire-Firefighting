@@ -6,6 +6,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.peterwolf.forestfire.fire.incident.FireIncident;
 import com.peterwolf.forestfire.fire.incident.IncidentManager;
 import com.peterwolf.forestfire.fire.incident.IncidentStatus;
+import com.peterwolf.forestfire.fire.simulation.FireSimulation;
 import com.peterwolf.forestfire.mission.MissionScorer;
 import java.util.Optional;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -21,47 +22,70 @@ public final class FireIncidentCommands {
 	}
 
 	public static void register() {
-		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> dispatcher.register(
-			Commands.literal("fireincident")
-				.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
-				.then(Commands.literal("create")
-					.executes(ctx -> create(ctx, 3, null))
-					.then(Commands.argument("size", IntegerArgumentType.integer(1, 32))
-						.executes(ctx -> create(ctx, IntegerArgumentType.getInteger(ctx, "size"), null)))
-					.then(Commands.argument("x", IntegerArgumentType.integer())
-						.then(Commands.argument("y", IntegerArgumentType.integer())
-							.then(Commands.argument("z", IntegerArgumentType.integer())
-								.then(Commands.argument("size", IntegerArgumentType.integer(1, 32))
-									.executes(ctx -> create(ctx,
-										IntegerArgumentType.getInteger(ctx, "size"),
-										new BlockPos(
-											IntegerArgumentType.getInteger(ctx, "x"),
-											IntegerArgumentType.getInteger(ctx, "y"),
-											IntegerArgumentType.getInteger(ctx, "z")
-										))))))))
-				.then(Commands.literal("list").executes(FireIncidentCommands::list))
-				.then(Commands.literal("info")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(FireIncidentCommands::info)))
-				.then(Commands.literal("contain")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(ctx -> setStatus(ctx, IncidentStatus.CONTAINED))))
-				.then(Commands.literal("extinguish")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(FireIncidentCommands::extinguish)))
-				.then(Commands.literal("remove")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(FireIncidentCommands::remove)))
-				.then(Commands.literal("teleport")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(FireIncidentCommands::teleport)))
-				.then(Commands.literal("control")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(ctx -> setStatus(ctx, IncidentStatus.CONTROLLED))))
-				.then(Commands.literal("close")
-					.then(Commands.argument("id", IntegerArgumentType.integer(1))
-						.executes(ctx -> setStatus(ctx, IncidentStatus.CLOSED))))
-		));
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+			dispatcher.register(
+				Commands.literal("fireincident")
+					.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+					.then(Commands.literal("create")
+						.executes(ctx -> create(ctx, 3, null))
+						.then(Commands.argument("size", IntegerArgumentType.integer(1, 32))
+							.executes(ctx -> create(ctx, IntegerArgumentType.getInteger(ctx, "size"), null)))
+						.then(Commands.argument("x", IntegerArgumentType.integer())
+							.then(Commands.argument("y", IntegerArgumentType.integer())
+								.then(Commands.argument("z", IntegerArgumentType.integer())
+									.then(Commands.argument("size", IntegerArgumentType.integer(1, 32))
+										.executes(ctx -> create(ctx,
+											IntegerArgumentType.getInteger(ctx, "size"),
+											new BlockPos(
+												IntegerArgumentType.getInteger(ctx, "x"),
+												IntegerArgumentType.getInteger(ctx, "y"),
+												IntegerArgumentType.getInteger(ctx, "z")
+											))))))))
+					.then(Commands.literal("list").executes(FireIncidentCommands::list))
+					.then(Commands.literal("info")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(FireIncidentCommands::info)))
+					.then(Commands.literal("contain")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(ctx -> setStatus(ctx, IncidentStatus.CONTAINED))))
+					.then(Commands.literal("extinguish")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(FireIncidentCommands::extinguish)))
+					.then(Commands.literal("douse")
+						.executes(ctx -> douse(ctx, 16))
+						.then(Commands.argument("radius", IntegerArgumentType.integer(1, 128))
+							.executes(ctx -> douse(ctx, IntegerArgumentType.getInteger(ctx, "radius")))))
+					.then(Commands.literal("remove")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(FireIncidentCommands::remove)))
+					.then(Commands.literal("teleport")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(FireIncidentCommands::teleport)))
+					.then(Commands.literal("control")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(ctx -> setStatus(ctx, IncidentStatus.CONTROLLED))))
+					.then(Commands.literal("close")
+						.then(Commands.argument("id", IntegerArgumentType.integer(1))
+							.executes(ctx -> setStatus(ctx, IncidentStatus.CLOSED))))
+			);
+
+			// Short alias: /fireextinguish <radius>
+			dispatcher.register(
+				Commands.literal("fireextinguish")
+					.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+					.executes(ctx -> douse(ctx, 16))
+					.then(Commands.argument("radius", IntegerArgumentType.integer(1, 128))
+						.executes(ctx -> douse(ctx, IntegerArgumentType.getInteger(ctx, "radius"))))
+			);
+			// Polish alias
+			dispatcher.register(
+				Commands.literal("gaspozaru")
+					.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+					.executes(ctx -> douse(ctx, 16))
+					.then(Commands.argument("radius", IntegerArgumentType.integer(1, 128))
+						.executes(ctx -> douse(ctx, IntegerArgumentType.getInteger(ctx, "radius"))))
+			);
+		});
 	}
 
 	private static int create(CommandContext<CommandSourceStack> ctx, int size, BlockPos pos) throws CommandSyntaxException {
@@ -130,6 +154,26 @@ public final class FireIncidentCommands {
 		IncidentManager.get(ctx.getSource().getLevel()).extinguishAll(id);
 		ctx.getSource().sendSuccess(() -> Component.literal("Extinguished incident #" + id), true);
 		return 1;
+	}
+
+	/** Extinguish fire in a sphere around the player (or command source position). */
+	private static int douse(CommandContext<CommandSourceStack> ctx, int radius) throws CommandSyntaxException {
+		ServerLevel level = ctx.getSource().getLevel();
+		BlockPos center;
+		if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
+			center = player.blockPosition();
+		} else {
+			center = BlockPos.containing(ctx.getSource().getPosition());
+		}
+		int count = FireSimulation.get(level).extinguishInRadius(center, radius);
+		IncidentManager.get(level).markDirty();
+		final int r = radius;
+		final int n = count;
+		ctx.getSource().sendSuccess(() -> Component.literal(
+			"Doused fire in radius " + r + " around " + center.toShortString()
+				+ " — extinguished " + n + " fire cell(s) (+ vanilla fire blocks)."
+		), true);
+		return Math.max(1, count);
 	}
 
 	private static int remove(CommandContext<CommandSourceStack> ctx) {

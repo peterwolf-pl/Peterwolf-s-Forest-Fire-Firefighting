@@ -6,11 +6,14 @@ import com.peterwolf.forestfire.command.FireDangerCommands;
 import com.peterwolf.forestfire.command.FireIncidentCommands;
 import com.peterwolf.forestfire.command.FireTestCommands;
 import com.peterwolf.forestfire.command.FirefighterCommands;
+import com.peterwolf.forestfire.command.WindCommands;
 import com.peterwolf.forestfire.config.ForestFireConfig;
+import com.peterwolf.forestfire.fire.simulation.BurningTreeCollapse;
 import com.peterwolf.forestfire.fire.simulation.FireWorldTicker;
 import com.peterwolf.forestfire.item.ModItems;
 import com.peterwolf.forestfire.network.ModNetworking;
 import com.peterwolf.forestfire.sound.ModSounds;
+import com.peterwolf.forestfire.world.FireChunkTickets;
 import com.peterwolf.forestfire.world.FirePersistenceHooks;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
@@ -32,6 +35,7 @@ public final class ForestFireMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		ForestFireConfig.load();
+		FireChunkTickets.register();
 		ModSounds.register();
 		ModBlocks.register();
 		ModBlockEntities.register();
@@ -39,10 +43,12 @@ public final class ForestFireMod implements ModInitializer {
 		ModNetworking.register();
 		FireIncidentCommands.register();
 		FireDangerCommands.register();
+		WindCommands.register();
 		FirefighterCommands.register();
 		FireTestCommands.register();
 		FireWorldTicker.register();
 		FirePersistenceHooks.register();
+		BurningTreeCollapse.init();
 		LOGGER.info("Peterwolf's Forest Fire & Firefighting initialized.");
 		LOGGER.info(DEDICATION);
 	}

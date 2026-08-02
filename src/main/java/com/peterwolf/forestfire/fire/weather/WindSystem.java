@@ -18,11 +18,14 @@ public final class WindSystem {
 	private float targetYaw;
 	private int ticksUntilChange;
 	private long lastGameTime = Long.MIN_VALUE;
+	/** Extra speed from large-fire convection (firestorm). Smoothly lerped. */
+	private float firestormBoost;
+	private float targetFirestormBoost;
 
 	public WindSystem() {
 		ForestFireConfig.Data cfg = ForestFireConfig.get();
-		this.speed = 0.25F;
-		this.yawDegrees = 0.0F;
+		this.speed = cfg.configuredWindSpeed;
+		this.yawDegrees = Mth.wrapDegrees(cfg.configuredWindYawDegrees);
 		this.targetSpeed = speed;
 		this.targetYaw = yawDegrees;
 		this.ticksUntilChange = cfg.windChangeIntervalTicks;
@@ -31,7 +34,8 @@ public final class WindSystem {
 	public void tick(ServerLevel level) {
 		ForestFireConfig.Data cfg = ForestFireConfig.get();
 		if (!cfg.windEnabled) {
-			speed = 0.0F;
+			firestormBoost = 0.0F;
+			targetFirestormBoost = 0.0F;
 			return;
 		}
 		long time = level.getGameTime();
@@ -41,21 +45,64 @@ public final class WindSystem {
 		lastGameTime = time;
 		RandomSource random = level.getRandom();
 
-		if (--ticksUntilChange <= 0) {
+		if (!cfg.dynamicWind) {
+			targetSpeed = cfg.configuredWindSpeed;
+			targetYaw = Mth.wrapDegrees(cfg.configuredWindYawDegrees);
+			ticksUntilChange = cfg.windChangeIntervalTicks;
+		} else if (--ticksUntilChange <= 0) {
 			ticksUntilChange = Math.max(200, cfg.windChangeIntervalTicks + random.nextInt(cfg.windChangeIntervalTicks / 2 + 1));
 			float delta = (random.nextFloat() * 2.0F - 1.0F) * cfg.windChangeStrength;
 			targetSpeed = Mth.clamp(targetSpeed + delta, cfg.minimumWindSpeed, cfg.maximumWindSpeed);
-			targetYaw = Mth.wrapDegrees(targetYaw + (random.nextFloat() * 2.0F - 1.0F) * 35.0F * cfg.windChangeStrength * 4.0F);
+			targetYaw = Mth.wrapDegrees(
+				targetYaw + (random.nextFloat() * 2.0F - 1.0F) * cfg.windDirectionChangeDegrees
+			);
 		}
 
 		// Smooth interpolation toward targets
-		speed = Mth.lerp(0.02F, speed, targetSpeed);
+		speed = Mth.lerp(cfg.windSmoothingFactor, speed, targetSpeed);
 		float yawDiff = Mth.wrapDegrees(targetYaw - yawDegrees);
-		yawDegrees = Mth.wrapDegrees(yawDegrees + yawDiff * 0.02F);
+		yawDegrees = Mth.wrapDegrees(yawDegrees + yawDiff * cfg.windSmoothingFactor);
+		// Fire-driven wind builds/decays faster than weather wind
+		firestormBoost = Mth.lerp(0.08F, firestormBoost, targetFirestormBoost);
 	}
 
-	public float speed() {
+	/**
+	 * Apply fire-induced wind from a large hot burn (call each fire tick with current FirestormState).
+	 */
+	public void applyFirestorm(FirestormState storm) {
+		if (storm == null || !storm.active) {
+			targetFirestormBoost = 0.0F;
+			return;
+		}
+		targetFirestormBoost = storm.windBoost;
+	}
+
+	/** Ambient weather wind only (no firestorm). */
+	public float baseSpeed() {
 		return speed;
+	}
+
+	/** Ambient weather wind used outside the compact firestorm cluster. */
+	public float speed() {
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		if (!cfg.windEnabled) {
+			return 0.0F;
+		}
+		return Mth.clamp(speed, cfg.minimumWindSpeed, cfg.maximumWindSpeed);
+	}
+
+	/** Local effective wind inside the active firestorm cluster. */
+	public float firestormSpeed() {
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		if (!cfg.windEnabled) {
+			return 0.0F;
+		}
+		float cap = cfg.maximumWindSpeed + cfg.firestormWindBoostMax;
+		return Mth.clamp(speed + firestormBoost, cfg.minimumWindSpeed, cap);
+	}
+
+	public float firestormBoost() {
+		return firestormBoost;
 	}
 
 	public float yawDegrees() {
@@ -65,7 +112,8 @@ public final class WindSystem {
 	/** Unit X component of wind (east positive). */
 	public float dx() {
 		float rad = yawDegrees * Mth.DEG_TO_RAD;
-		return Mth.sin(rad);
+		// Minecraft yaw +90 points west, hence negative world X.
+		return -Mth.sin(rad);
 	}
 
 	/** Unit Z component of wind (south positive). */
@@ -92,16 +140,45 @@ public final class WindSystem {
 		float yaw = Mth.wrapDegrees(yawDegrees);
 		// 8-point compass
 		String[] labels = {"S", "SW", "W", "NW", "N", "NE", "E", "SE"};
-		int index = Math.round(((yaw + 180.0F) % 360.0F) / 45.0F) % 8;
 		// Map: 0 deg = south in our vector model
 		int mapped = Math.floorMod(Math.round(yaw / 45.0F), 8);
 		return labels[mapped];
 	}
 
+	/**
+	 * Immediately set the ambient wind for this dimension. Dynamic mode may
+	 * gradually move away from this state at the next configured weather change.
+	 */
+	public void setWind(float speed, float yaw) {
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		float safeSpeed = Float.isFinite(speed) ? speed : cfg.configuredWindSpeed;
+		float safeYaw = Float.isFinite(yaw) ? yaw : cfg.configuredWindYawDegrees;
+		this.speed = Mth.clamp(safeSpeed, cfg.minimumWindSpeed, cfg.maximumWindSpeed);
+		this.yawDegrees = Mth.wrapDegrees(safeYaw);
+		this.targetSpeed = this.speed;
+		this.targetYaw = this.yawDegrees;
+		this.ticksUntilChange = cfg.windChangeIntervalTicks;
+	}
+
+	public void setSpeed(float speed) {
+		setWind(speed, yawDegrees);
+	}
+
+	public void setYawDegrees(float yaw) {
+		setWind(speed, yaw);
+	}
+
+	public void resetToConfigured() {
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		setWind(cfg.configuredWindSpeed, cfg.configuredWindYawDegrees);
+	}
+
 	public void load(float speed, float yaw) {
-		this.speed = speed;
-		this.yawDegrees = yaw;
-		this.targetSpeed = speed;
-		this.targetYaw = yaw;
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		if (!cfg.dynamicWind) {
+			setWind(cfg.configuredWindSpeed, cfg.configuredWindYawDegrees);
+			return;
+		}
+		setWind(speed, yaw);
 	}
 }

@@ -49,7 +49,9 @@ See [docs/ADMIN_COMMANDS.md](docs/ADMIN_COMMANDS.md).
 
 ## Configuration
 
-`config/peterwolfs_forestfire.json` — wind, max burning blocks, hose length, wetness, smoke, scoring weights.
+`config/peterwolfs_forestfire.json` — dynamic/fixed wind, direction and speed,
+max burning blocks, hose length, wetness, smoke, and scoring weights. Operators
+can inspect or change wind at runtime with `/wind`.
 
 See [docs/SERVER_CONFIG.md](docs/SERVER_CONFIG.md) and [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 

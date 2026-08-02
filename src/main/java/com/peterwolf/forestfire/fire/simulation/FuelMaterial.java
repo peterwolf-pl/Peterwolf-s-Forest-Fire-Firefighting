@@ -1,9 +1,11 @@
 package com.peterwolf.forestfire.fire.simulation;
 
+import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -12,15 +14,16 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public enum FuelMaterial {
 	// baseFuel ≈ relative burn duration units (sim ticks at full flame)
+	// emberRate = how readily heat lifts glowing plant fragments (sparks)
 	// Grass is surface fire: quick to start, but must last long enough for hose work.
-	GRASS(0.90F, 0.12F, 0.30F, 140, 0.05F, false, false),
-	DRY_LEAVES(0.95F, 0.20F, 0.55F, 90, 0.35F, true, false),
-	LIVING_LEAVES(0.45F, 0.45F, 0.45F, 100, 0.25F, true, false),
-	LOG(0.18F, 0.30F, 0.70F, 220, 0.08F, false, true),
-	TRUNK(0.12F, 0.30F, 0.85F, 320, 0.06F, false, true),
-	DEAD_BUSH(0.98F, 0.05F, 0.35F, 80, 0.12F, false, false),
-	WOODEN_STRUCTURE(0.28F, 0.25F, 0.75F, 180, 0.10F, false, true),
-	PEAT(0.08F, 0.70F, 0.50F, 400, 0.02F, false, true),
+	GRASS(0.90F, 0.12F, 0.30F, 140, 0.18F, false, false),
+	DRY_LEAVES(0.95F, 0.20F, 0.55F, 90, 0.55F, true, false),
+	LIVING_LEAVES(0.45F, 0.45F, 0.45F, 100, 0.40F, true, false),
+	LOG(0.18F, 0.30F, 0.70F, 220, 0.22F, false, true),
+	TRUNK(0.12F, 0.30F, 0.85F, 320, 0.20F, false, true),
+	DEAD_BUSH(0.98F, 0.05F, 0.35F, 80, 0.28F, false, false),
+	WOODEN_STRUCTURE(0.28F, 0.25F, 0.75F, 180, 0.25F, false, true),
+	PEAT(0.08F, 0.70F, 0.50F, 400, 0.05F, false, true),
 	NON_FLAMMABLE(0.0F, 1.0F, 0.0F, 0, 0.0F, false, false);
 
 	/** Base chance to ignite when heated (0–1). */
@@ -60,25 +63,24 @@ public enum FuelMaterial {
 		Block block = state.getBlock();
 		if (block == Blocks.GRASS_BLOCK || block == Blocks.SHORT_GRASS || block == Blocks.TALL_GRASS
 			|| block == Blocks.FERN || block == Blocks.LARGE_FERN || block == Blocks.DEAD_BUSH
-			|| state.is(BlockTags.FLOWERS) || state.is(BlockTags.REPLACEABLE)) {
+			|| state.is(BlockTags.FLOWERS)) {
 			if (block == Blocks.DEAD_BUSH) {
 				return DEAD_BUSH;
 			}
-			if (state.is(BlockTags.LEAVES) || block instanceof LeavesBlock) {
-				// handled below — replaceable leaves tags may overlap
-			} else if (block == Blocks.GRASS_BLOCK || block == Blocks.SHORT_GRASS || block == Blocks.TALL_GRASS
-				|| block == Blocks.FERN || block == Blocks.LARGE_FERN || state.is(BlockTags.FLOWERS)) {
-				return GRASS;
-			}
+			return GRASS;
 		}
-		if (state.is(BlockTags.LEAVES) || block instanceof LeavesBlock) {
-			// Persistent leaves behave as living; non-persistent as drier canopy fuel
-			if (state.hasProperty(LeavesBlock.PERSISTENT) && state.getValue(LeavesBlock.PERSISTENT)) {
-				return LIVING_LEAVES;
-			}
+		if (block == Blocks.LEAF_LITTER || block == Blocks.VINE || block == Blocks.GLOW_LICHEN) {
 			return DRY_LEAVES;
 		}
+		if (state.is(BlockTags.LEAVES) || block instanceof LeavesBlock) {
+			// PERSISTENT describes player placement/decay, not whether a leaf is dry.
+			return LIVING_LEAVES;
+		}
 		if (state.is(BlockTags.LOGS) || state.is(BlockTags.OVERWORLD_NATURAL_LOGS)) {
+			if (state.hasProperty(RotatedPillarBlock.AXIS)
+				&& state.getValue(RotatedPillarBlock.AXIS) != Direction.Axis.Y) {
+				return LOG;
+			}
 			return TRUNK;
 		}
 		if (state.is(BlockTags.PLANKS) || state.is(BlockTags.WOODEN_DOORS) || state.is(BlockTags.WOODEN_STAIRS)
@@ -87,14 +89,16 @@ public enum FuelMaterial {
 			|| block == Blocks.CHEST || block == Blocks.BARREL || block == Blocks.LADDER) {
 			return WOODEN_STRUCTURE;
 		}
-		if (block == Blocks.MUD || block == Blocks.MUDDY_MANGROVE_ROOTS || block == Blocks.ROOTED_DIRT) {
+		// Rooted dirt is the closest vanilla proxy for an organic soil layer.
+		// Wet mud and muddy mangrove roots are deliberately non-flammable.
+		if (block == Blocks.ROOTED_DIRT) {
 			return PEAT;
 		}
-		if (state.is(BlockTags.WOOL) || state.is(BlockTags.BEDS) || state.ignitedByLava()) {
+		if (state.is(BlockTags.WOOL) || state.is(BlockTags.BEDS)) {
 			return WOODEN_STRUCTURE;
 		}
-		if (state.ignitedByLava() || block == Blocks.VINE || block == Blocks.GLOW_LICHEN) {
-			return DRY_LEAVES;
+		if (state.ignitedByLava()) {
+			return WOODEN_STRUCTURE;
 		}
 		return NON_FLAMMABLE;
 	}

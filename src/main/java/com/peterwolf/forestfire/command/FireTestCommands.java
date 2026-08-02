@@ -1,6 +1,7 @@
 package com.peterwolf.forestfire.command;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.peterwolf.forestfire.config.ForestFireConfig;
 import com.peterwolf.forestfire.fire.incident.FireIncident;
 import com.peterwolf.forestfire.fire.incident.IncidentManager;
 import com.peterwolf.forestfire.fire.simulation.FireSimulation;
@@ -29,10 +30,17 @@ public final class FireTestCommands {
 							IntegerArgumentType.getInteger(ctx, "size")))))
 				.then(Commands.literal("stats").executes(ctx -> {
 					ServerLevel level = ctx.getSource().getLevel();
-					int cells = FireSimulation.get(level).cells().size();
+					FireSimulation simulation = FireSimulation.get(level);
+					int cells = simulation.cells().size();
+					int activeCells = simulation.activeCellCount();
+					int chunkTickets = simulation.activeFireChunkTicketCount();
+					ForestFireConfig.Data cfg = ForestFireConfig.get();
 					int incidents = IncidentManager.get(level).openIncidents().size();
 					ctx.getSource().sendSuccess(() -> Component.literal(
-						"Active fire cells=" + cells + " open incidents=" + incidents
+						"Fire cells tracked=" + cells
+							+ " active=" + activeCells + "/" + cfg.maxBurningBlocksPerWorld
+							+ " chunk tickets=" + chunkTickets + "/" + cfg.maxFireChunkTickets
+							+ " open incidents=" + incidents
 					), false);
 					return cells;
 				}))

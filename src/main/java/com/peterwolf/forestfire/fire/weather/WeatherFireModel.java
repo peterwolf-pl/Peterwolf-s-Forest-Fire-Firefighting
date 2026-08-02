@@ -16,8 +16,10 @@ public final class WeatherFireModel {
 		boolean raining = level.isRaining();
 		boolean thundering = level.isThundering();
 		Biome biome = level.getBiome(pos).value();
-		boolean humidBiome = biome.getBaseTemperature() < 0.5F || biome.hasPrecipitation();
-		float base = humidBiome ? 0.55F : 0.30F;
+		float temperature = Math.min(1.0F, Math.max(0.0F, biome.getBaseTemperature()));
+		// Climate humidity: precipitation capability alone must not make every
+		// temperate biome permanently wet.
+		float base = 0.20F + (biome.hasPrecipitation() ? 0.14F : 0.0F) + (1.0F - temperature) * 0.10F;
 		if (raining) {
 			base += 0.30F;
 		}
@@ -29,6 +31,20 @@ public final class WeatherFireModel {
 			base += 0.15F;
 		}
 		return Math.min(1.0F, base);
+	}
+
+	/**
+	 * Moisture assigned when fuel first enters the simulation. This prevents
+	 * freshly tracked grass after rain from reverting to a static dry profile.
+	 */
+	public static float initialFuelMoisture01(ServerLevel level, BlockPos pos, float materialBaseMoisture) {
+		float moisture = materialBaseMoisture * 0.72F
+			+ humidity01(level, pos) * 0.34F
+			- temperature01(level, pos) * 0.05F;
+		if (isRainingAt(level, pos)) {
+			moisture += 0.18F;
+		}
+		return Math.min(0.98F, Math.max(0.03F, moisture));
 	}
 
 	public static float temperature01(ServerLevel level, BlockPos pos) {
@@ -58,9 +74,13 @@ public final class WeatherFireModel {
 	}
 
 	public static FireDangerLevel danger(ServerLevel level, BlockPos pos, WindSystem wind) {
+		return danger(level, pos, wind.speed());
+	}
+
+	public static FireDangerLevel danger(ServerLevel level, BlockPos pos, float windSpeed) {
 		float humidity = humidity01(level, pos);
 		float temperature = temperature01(level, pos);
-		float windFactor = wind.speed();
+		float windFactor = Math.max(0.0F, windSpeed);
 		float dryness = 1.0F - humidity;
 		float score = dryness * 0.45F + temperature * 0.30F + windFactor * 0.25F;
 		if (level.isRaining()) {

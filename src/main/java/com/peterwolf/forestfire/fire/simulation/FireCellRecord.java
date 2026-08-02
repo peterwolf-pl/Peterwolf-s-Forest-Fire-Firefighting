@@ -14,7 +14,10 @@ public record FireCellRecord(
 	short reignitionTimer,
 	byte materialOrdinal,
 	int incidentId,
-	byte integrity
+	byte integrity,
+	float heatRemainder,
+	float moistureRemainder,
+	float fuelRemainder
 ) {
 	public static final Codec<FireCellRecord> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 		BlockPos.CODEC.fieldOf("pos").forGetter(FireCellRecord::pos),
@@ -25,7 +28,10 @@ public record FireCellRecord(
 		Codec.SHORT.fieldOf("reignite").forGetter(FireCellRecord::reignitionTimer),
 		Codec.BYTE.fieldOf("material").forGetter(FireCellRecord::materialOrdinal),
 		Codec.INT.fieldOf("incident").forGetter(FireCellRecord::incidentId),
-		Codec.BYTE.optionalFieldOf("integrity", (byte) 100).forGetter(FireCellRecord::integrity)
+		Codec.BYTE.optionalFieldOf("integrity", (byte) 100).forGetter(FireCellRecord::integrity),
+		Codec.FLOAT.optionalFieldOf("heatRemainder", 0.0F).forGetter(FireCellRecord::heatRemainder),
+		Codec.FLOAT.optionalFieldOf("moistureRemainder", 0.0F).forGetter(FireCellRecord::moistureRemainder),
+		Codec.FLOAT.optionalFieldOf("fuelRemainder", 0.0F).forGetter(FireCellRecord::fuelRemainder)
 	).apply(instance, FireCellRecord::new));
 
 	public static FireCellRecord from(BlockPos pos, FireCell cell) {
@@ -38,7 +44,10 @@ public record FireCellRecord(
 			cell.reignitionTimer,
 			cell.materialOrdinal,
 			cell.incidentId,
-			cell.integrity
+			cell.integrity,
+			cell.heatRemainder,
+			cell.moistureRemainder,
+			cell.fuelRemainder
 		);
 	}
 
@@ -52,6 +61,15 @@ public record FireCellRecord(
 		cell.materialOrdinal = materialOrdinal;
 		cell.incidentId = incidentId;
 		cell.integrity = integrity;
+		cell.heatRemainder = finiteRemainder(heatRemainder);
+		cell.moistureRemainder = finiteRemainder(moistureRemainder);
+		cell.fuelRemainder = Float.isFinite(fuelRemainder)
+			? Math.max(0.0F, Math.min(0.999F, fuelRemainder))
+			: 0.0F;
 		return cell;
+	}
+
+	private static float finiteRemainder(float value) {
+		return Float.isFinite(value) ? Math.max(-0.999F, Math.min(0.999F, value)) : 0.0F;
 	}
 }
