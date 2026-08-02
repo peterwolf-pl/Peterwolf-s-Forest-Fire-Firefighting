@@ -99,7 +99,8 @@ public final class HosePathGenerator {
 	}
 
 	/**
-	 * Pump output port position (slightly above block centre toward facing).
+	 * Pump hose coupling — outside the pump body so path validation does not
+	 * treat the pump block itself as a solid wall.
 	 */
 	public static Vec3 pumpPort(Level level, BlockPos pumpPos, boolean intakeSide) {
 		BlockState state = level.getBlockState(pumpPos);
@@ -107,12 +108,12 @@ public final class HosePathGenerator {
 		if (state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING)) {
 			facing = state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING);
 		}
-		// Intake on left/back relative to facing; output on front
+		// Intake on back; output on front — 0.85 so coupling is outside the solid cube
 		Direction portDir = intakeSide ? facing.getOpposite() : facing;
 		return new Vec3(
-			pumpPos.getX() + 0.5 + portDir.getStepX() * 0.45,
-			pumpPos.getY() + 0.55,
-			pumpPos.getZ() + 0.5 + portDir.getStepZ() * 0.45
+			pumpPos.getX() + 0.5 + portDir.getStepX() * 0.85,
+			pumpPos.getY() + 0.35,
+			pumpPos.getZ() + 0.5 + portDir.getStepZ() * 0.85
 		);
 	}
 
@@ -258,7 +259,23 @@ public final class HosePathGenerator {
 		if (state.isAir() || state.canBeReplaced()) {
 			return false;
 		}
-		if (state.is(BlockTags.LEAVES) || state.is(BlockTags.FENCES) || state.is(BlockTags.DOORS)) {
+		if (!state.getFluidState().isEmpty()) {
+			return false;
+		}
+		if (state.is(BlockTags.LEAVES) || state.is(BlockTags.FENCES) || state.is(BlockTags.DOORS)
+			|| state.is(BlockTags.TRAPDOORS) || state.is(BlockTags.SLABS) || state.is(BlockTags.STAIRS)
+			|| state.is(BlockTags.WALLS) || state.is(BlockTags.FENCE_GATES) || state.is(BlockTags.REPLACEABLE)) {
+			return false;
+		}
+		// Equipment never blocks hose routing
+		if (state.is(com.peterwolf.forestfire.block.ModBlocks.PORTABLE_PUMP)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.HOSE_SPLITTER)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.INTAKE_STRAINER)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.GROUND_NOZZLE)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.PORTABLE_SPRINKLER)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.WATER_TANK_SMALL)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.WATER_TANK_MEDIUM)
+			|| state.is(com.peterwolf.forestfire.block.ModBlocks.WATER_TANK_LARGE)) {
 			return false;
 		}
 		return state.isSolid();
