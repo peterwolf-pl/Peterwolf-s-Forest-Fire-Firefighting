@@ -150,6 +150,16 @@ public final class HoseNetwork {
 	 */
 	@Nullable
 	public static PortablePumpBlockEntity findSupplyingPump(ServerLevel level, BlockPos hosePos) {
+		PortablePumpBlockEntity any = findAnyPump(level, hosePos);
+		if (any != null && any.canSupplyNozzle()) {
+			return any;
+		}
+		return null;
+	}
+
+	/** Nearest pump on the hose graph, regardless of running state (for diagnostics / weak supply). */
+	@Nullable
+	public static PortablePumpBlockEntity findAnyPump(ServerLevel level, BlockPos hosePos) {
 		int max = ForestFireConfig.get().maxHoseLength;
 		Set<Long> visited = new HashSet<>();
 		ArrayDeque<Node> queue = new ArrayDeque<>();
@@ -161,7 +171,7 @@ public final class HoseNetwork {
 				continue;
 			}
 			BlockEntity be = level.getBlockEntity(node.pos);
-			if (be instanceof PortablePumpBlockEntity pump && pump.canSupplyNozzle()) {
+			if (be instanceof PortablePumpBlockEntity pump) {
 				return pump;
 			}
 			for (Direction dir : Direction.values()) {
@@ -172,6 +182,7 @@ public final class HoseNetwork {
 				BlockState state = level.getBlockState(next);
 				if (state.is(ModBlocks.FIRE_HOSE) || state.is(ModBlocks.HOSE_SPLITTER)
 					|| state.is(ModBlocks.PORTABLE_PUMP) || state.is(ModBlocks.PORTABLE_SPRINKLER)
+					|| state.is(ModBlocks.GROUND_NOZZLE)
 					|| state.is(ModBlocks.WATER_TANK_SMALL) || state.is(ModBlocks.WATER_TANK_MEDIUM)
 					|| state.is(ModBlocks.WATER_TANK_LARGE)) {
 					queue.add(new Node(next, node.length + 1));

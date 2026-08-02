@@ -94,23 +94,31 @@ public class PortablePumpBlockEntity extends BlockEntity {
 
 		if (!hasStrainer) {
 			debris++;
-			if (debris > 400) {
-				efficiency = Math.max(0.35F, efficiency - 0.001F);
+			if (debris > 800) {
+				efficiency = Math.max(0.55F, efficiency - 0.0003F);
 			}
+		} else if (efficiency < 1.0F && level.getGameTime() % 40L == 0L) {
+			// Strainer gradually cleans the system
+			efficiency = Math.min(1.0F, efficiency + 0.01F);
+			debris = Math.max(0, debris - 5);
 		}
 
-		float load = 1.0F + connectedNozzles * 0.35F + hoseLength * cfg.pressureLossPerSegment;
-		float targetPressure = cfg.basePumpPressure * efficiency / Math.max(0.5F, load * 0.65F);
-		pressure = pressure * 0.85F + targetPressure * 0.15F;
-		heat += load * 0.02F;
-		heat = Math.max(0.0F, heat - 0.01F);
+		// Open nozzles add load, but keep it gentle so continuous spray stays usable
+		float load = 1.0F + connectedNozzles * 0.18F + hoseLength * cfg.pressureLossPerSegment * 0.75F;
+		float targetPressure = cfg.basePumpPressure * efficiency / Math.max(0.55F, load * 0.55F);
+		pressure = pressure * 0.80F + targetPressure * 0.20F;
+		// Slow thermal inertia — old values overheated in ~2 seconds of spraying
+		heat += load * 0.0015F;
+		heat = Math.max(0.0F, heat - 0.004F);
 
 		if (heat > 1.0F) {
+			// Stay usable at reduced output; cool while still pumping
 			state = PumpState.OVERHEATED;
-			pressure *= 0.5F;
-		} else if (load > 3.5F) {
+			pressure = Math.min(pressure, targetPressure * 0.65F);
+			heat = Math.max(0.85F, heat - 0.01F);
+		} else if (load > 4.0F) {
 			state = PumpState.OVERLOADED;
-			pressure *= 0.7F;
+			pressure = Math.min(pressure, targetPressure * 0.85F);
 		} else {
 			state = PumpState.RUNNING;
 		}
@@ -183,16 +191,27 @@ public class PortablePumpBlockEntity extends BlockEntity {
 	}
 
 	public boolean canSupplyNozzle() {
-		return (state == PumpState.RUNNING || state == PumpState.OVERLOADED)
-			&& pressure > 0.15F && intakeWater > 0;
+		// OVERHEATED still supplies water (weaker) — do not hard-kill the line mid-attack
+		if (fuel <= 0 || pressure <= 0.05F) {
+			return false;
+		}
+		if (state == PumpState.OFF || state == PumpState.DAMAGED || state == PumpState.STARTING) {
+			return false;
+		}
+		if (state == PumpState.STARVED && intakeWater <= 0) {
+			return false;
+		}
+		return true;
 	}
 
 	public float consumeForNozzle(float demand) {
 		if (!canSupplyNozzle()) {
 			return 0.0F;
 		}
-		float supplied = Math.min(demand, pressure);
-		pressure = Math.max(0.1F, pressure - demand * 0.02F);
+		float factor = state == PumpState.OVERHEATED ? 0.65F : (state == PumpState.OVERLOADED ? 0.8F : 1.0F);
+		float supplied = Math.min(demand, pressure) * factor;
+		// Light draw so continuous fog/stream does not empty the pump in seconds
+		pressure = Math.max(0.08F, pressure - demand * 0.006F);
 		return supplied;
 	}
 

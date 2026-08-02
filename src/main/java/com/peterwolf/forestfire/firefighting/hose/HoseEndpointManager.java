@@ -309,12 +309,15 @@ public final class HoseEndpointManager extends SavedData {
 					releaseOperator(level, ep.operatorId, true);
 					continue;
 				}
-				// Ensure player still holds the nozzle item
+				// Ensure player still holds the nozzle item (grace: do not drop connection on 1-tick glitches)
 				if (!playerHoldsEndpoint(player, ep.id)) {
-					// Item lost somehow — recover to ground
-					releaseOperator(level, player.getUUID(), true);
+					ep.missingHoldTicks++;
+					if (ep.missingHoldTicks >= 40) {
+						releaseOperator(level, player.getUUID(), true);
+					}
 					continue;
 				}
+				ep.missingHoldTicks = 0;
 				ep.endpointPos = player.blockPosition();
 				ep.yaw = player.getYRot();
 				ep.pitch = player.getXRot();
@@ -322,14 +325,14 @@ public final class HoseEndpointManager extends SavedData {
 				applyHoseConstraint(level, player, ep);
 				if (ep.valve == NozzleValveState.OPEN && ep.mode.allowsFlow()) {
 					tickSpray(level, player, ep);
-				} else {
-					ep.closeValve();
 				}
+				// Do not force-close valve here when CLOSED — player releaseUsing owns that
 				if (level.getGameTime() % 5L == 0L) {
 					syncHud(player, ep);
 				}
 			} else if (ep.location == NozzleLocationState.GROUND) {
 				ep.closeValve(); // ground nozzles never auto-spray
+				ep.missingHoldTicks = 0;
 				refreshMetrics(level, ep);
 			}
 		}
@@ -339,26 +342,40 @@ public final class HoseEndpointManager extends SavedData {
 	}
 
 	private void tickSpray(ServerLevel level, ServerPlayer player, HoseEndpoint ep) {
-		PortablePumpBlockEntity pump = HoseNetwork.findSupplyingPump(level, ep.anchorPos);
-		if (pump == null || !pump.canSupplyNozzle()) {
+		// Prefer any pump on the line, even weakened — continuous attack must not hard-stop
+		PortablePumpBlockEntity pump = HoseNetwork.findAnyPump(level, ep.anchorPos);
+		if (pump == null) {
 			ep.pressure01 = 0.0F;
-			ep.closeValve();
-			player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_no_pressure"));
+			if (level.getGameTime() % 20L == 0L) {
+				player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_no_pressure"));
+			}
 			return;
 		}
-		float demand = 0.15F + ep.mode.pressureDemand * 0.25F + ep.mode.flowDemand * 0.1F;
-		// Longer free hose reduces pressure
-		float lengthPenalty = 1.0F - Math.min(0.5F, ep.hoseLengthFromPump * ForestFireConfig.get().pressureLossPerSegment);
+		if (!pump.canSupplyNozzle()) {
+			ep.pressure01 = Math.max(0.0F, pump.getPressure());
+			if (level.getGameTime() % 20L == 0L) {
+				player.sendOverlayMessage(Component.literal(
+					"Pump: " + pump.getPumpState().name() + " — check fuel / water intake"
+				));
+			}
+			// Keep valve open so flow resumes automatically when pump recovers
+			return;
+		}
+		float demand = 0.12F + ep.mode.pressureDemand * 0.18F + ep.mode.flowDemand * 0.08F;
+		// Longer hose reduces pressure gently
+		float lengthPenalty = 1.0F - Math.min(0.4F, ep.hoseLengthFromPump * ForestFireConfig.get().pressureLossPerSegment * 0.8F);
 		float supplied = pump.consumeForNozzle(demand) * lengthPenalty;
-		ep.pressure01 = Mth.clamp(supplied / Math.max(0.05F, demand), 0.0F, 1.0F);
-		if (ep.pressure01 < 0.08F) {
-			player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_low_pressure"));
+		ep.pressure01 = Mth.clamp(Math.max(pump.getPressure(), supplied / Math.max(0.05F, demand)), 0.0F, 1.0F);
+		if (ep.pressure01 < 0.06F) {
+			if (level.getGameTime() % 20L == 0L) {
+				player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_low_pressure"));
+			}
 			return;
 		}
 		// Slight recoil
 		if (ep.mode != NozzleMode.WIDE_FOG) {
 			Vec3 look = player.getLookAngle();
-			player.setDeltaMovement(player.getDeltaMovement().add(look.scale(-0.012 * ep.mode.pressureDemand * ep.pressure01)));
+			player.setDeltaMovement(player.getDeltaMovement().add(look.scale(-0.008 * ep.mode.pressureDemand * ep.pressure01)));
 			player.hurtMarked = true;
 		}
 		NozzleWaterSimulation.spray(level, player, ep.mode, ep.pressure01);
@@ -457,11 +474,24 @@ public final class HoseEndpointManager extends SavedData {
 	public static boolean playerHoldsEndpoint(ServerPlayer player, UUID endpointId) {
 		String id = endpointId.toString();
 		ItemStack main = player.getMainHandItem();
-		if (main.is(ModItems.FIRE_HOSE_NOZZLE) && id.equals(main.get(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID))) {
+		if (main.is(ModItems.FIRE_HOSE_NOZZLE)
+			&& id.equals(main.getOrDefault(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID, ""))) {
 			return true;
 		}
 		ItemStack off = player.getOffhandItem();
-		return off.is(ModItems.FIRE_HOSE_NOZZLE) && id.equals(off.get(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID));
+		if (off.is(ModItems.FIRE_HOSE_NOZZLE)
+			&& id.equals(off.getOrDefault(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID, ""))) {
+			return true;
+		}
+		// Also accept hotbar (player may switch slots briefly)
+		for (int i = 0; i < 9; i++) {
+			ItemStack stack = player.getInventory().getItem(i);
+			if (stack.is(ModItems.FIRE_HOSE_NOZZLE)
+				&& id.equals(stack.getOrDefault(com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents.NOZZLE_ENDPOINT_ID, ""))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static void stripDuplicateEndpoints(ServerPlayer player, UUID endpointId, boolean keepOneInMain) {

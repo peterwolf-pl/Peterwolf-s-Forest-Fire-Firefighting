@@ -51,6 +51,8 @@ public final class HoseEndpoint {
 	public float pressure01;
 	public HoseTension tension = HoseTension.SLACK;
 	public int remainingDistance;
+	/** Consecutive ticks the operator inventory lost the connected item (grace before auto-drop). */
+	public int missingHoldTicks;
 
 	public HoseEndpoint(UUID id, BlockPos anchor, BlockPos endpoint) {
 		this.id = id;
