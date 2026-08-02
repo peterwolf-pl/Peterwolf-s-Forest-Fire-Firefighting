@@ -45,7 +45,7 @@ public final class PlanesCompat {
 		}
 		// Only the active pilot may control firefighting systems (validated in entity methods).
 		switch (payload.action()) {
-			case FireplaneActionPayload.TOGGLE_DROP_ARMED -> plane.toggleDropArmed(player);
+			case FireplaneActionPayload.TOGGLE_DROP_ARMED -> plane.setDropArmedState(payload.active(), player);
 			case FireplaneActionPayload.SET_RELEASING -> plane.setReleaseActive(payload.active(), player);
 			case FireplaneActionPayload.TOGGLE_HOSE -> plane.toggleHose(player);
 			default -> {

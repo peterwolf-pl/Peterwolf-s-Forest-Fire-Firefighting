@@ -55,8 +55,21 @@ public final class FirefightingPlanesClient {
 	private static boolean lastReleaseDown;
 	/** Edge-guard so a single physical key press cannot toggle hose twice in one tick. */
 	private static int hoseToggleCooldown;
+	/**
+	 * Top-down drop aiming camera (enabled with water drop armed via V).
+	 * Cleared when exiting the plane or disarming the drop system.
+	 */
+	private static boolean dropAimCameraActive;
 
 	private FirefightingPlanesClient() {
+	}
+
+	public static boolean isDropAimCameraActive() {
+		return dropAimCameraActive;
+	}
+
+	public static void setDropAimCameraActive(boolean active) {
+		dropAimCameraActive = active;
 	}
 
 	public static void init() {
@@ -67,6 +80,7 @@ public final class FirefightingPlanesClient {
 			if (client.player == null || !(client.player.getVehicle() instanceof FirefightingPlaneEntity plane)) {
 				lastReleaseDown = false;
 				hoseToggleCooldown = 0;
+				dropAimCameraActive = false;
 				return;
 			}
 
@@ -75,8 +89,20 @@ public final class FirefightingPlanesClient {
 			}
 
 			while (TOGGLE_DROP.consumeClick()) {
-				ClientPlayNetworking.send(new FireplaneActionPayload(FireplaneActionPayload.TOGGLE_DROP_ARMED, true));
+				// Absolute desired state (avoids double-toggle on integrated server)
+				boolean nextArmed = !plane.isDropArmed();
+				ClientPlayNetworking.send(new FireplaneActionPayload(
+					FireplaneActionPayload.TOGGLE_DROP_ARMED, nextArmed
+				));
+				// Local prediction + top-down aim camera with drop arm
+				plane.setDropArmed(nextArmed);
+				if (!nextArmed) {
+					plane.setReleasing(false);
+				}
+				dropAimCameraActive = nextArmed;
 			}
+			// Keep camera state in sync with arm flag
+			dropAimCameraActive = plane.isDropArmed();
 			// Aircraft scoop hose only (not ground automatic hose). One packet per press.
 			boolean hoseClicked = false;
 			while (TOGGLE_HOSE.consumeClick()) {
@@ -122,7 +148,9 @@ public final class FirefightingPlanesClient {
 		graphics.fill(boxX, boxY + boxHeight - 1, boxX + boxWidth, boxY + boxHeight, 0xFF3399CC);
 
 		String water = AircraftWaterTank.formatHud(plane.getWaterAmount());
-		String drop = plane.isDropArmed() ? "DROP SYSTEM: ARMED" : "DROP SYSTEM: OFF";
+		String drop = plane.isDropArmed()
+			? (dropAimCameraActive ? "DROP SYSTEM: ARMED · TOP VIEW" : "DROP SYSTEM: ARMED")
+			: "DROP SYSTEM: OFF";
 		String hose = plane.isHoseDeployed() ? "INTAKE HOSE: DEPLOYED" : "INTAKE HOSE: RETRACTED";
 		String intake = intakeLabel(plane.getIntakeStatus());
 		int dropColor = plane.isDropArmed() ? 0xFF55FF55 : 0xFFAAAAAA;
@@ -170,7 +198,7 @@ public final class FirefightingPlanesClient {
 		if (warn != null) {
 			graphics.text(font, warn, boxX + 8, boxY + 66, 0xFFFFAA00, false);
 		} else {
-			graphics.text(font, "V arm  B drop  H hose", boxX + 8, boxY + 66, 0xFF8899AA, false);
+			graphics.text(font, "V arm+top view  B drop  H hose", boxX + 8, boxY + 66, 0xFF8899AA, false);
 		}
 
 		if (plane.isDebugMode()) {

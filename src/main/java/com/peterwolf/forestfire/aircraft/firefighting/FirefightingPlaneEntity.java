@@ -228,10 +228,18 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 	// --- Actions (server) ---
 
 	public void toggleDropArmed(@Nullable Player pilot) {
+		this.setDropArmedState(!this.isDropArmed(), pilot);
+	}
+
+	/** Absolute arm/disarm (used by network so client prediction does not double-toggle on SP). */
+	public void setDropArmedState(boolean armed, @Nullable Player pilot) {
 		if (!this.canPilotControl(pilot)) {
 			return;
 		}
-		boolean next = !this.isDropArmed();
+		if (armed == this.isDropArmed()) {
+			return;
+		}
+		boolean next = armed;
 		this.setDropArmed(next);
 		if (!next) {
 			this.setReleasing(false);
