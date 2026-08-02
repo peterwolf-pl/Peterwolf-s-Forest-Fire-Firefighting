@@ -4,6 +4,8 @@ import com.peterwolf.forestfire.ForestFireMod;
 import com.peterwolf.forestfire.firefighting.hose.HoseBlock;
 import com.peterwolf.forestfire.firefighting.hose.HoseSplitterBlock;
 import com.peterwolf.forestfire.firefighting.hose.IntakeHoseBlock;
+import com.peterwolf.forestfire.firefighting.hose.IntakeStrainerBlock;
+import com.peterwolf.forestfire.firefighting.nozzle.GroundNozzleBlock;
 import com.peterwolf.forestfire.firefighting.pump.PortablePumpBlock;
 import com.peterwolf.forestfire.firefighting.water.PortableSprinklerBlock;
 import com.peterwolf.forestfire.firefighting.water.PortableWaterTankBlock;
@@ -35,6 +37,11 @@ public final class ModBlocks {
 		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_BLUE).strength(0.4F).sound(SoundType.WOOL)
 			.noOcclusion().pushReaction(PushReaction.DESTROY));
 
+	/** Sitko ssawne — kładź w wodzie przy wężu ssawnym / pompie. */
+	public static final Block INTAKE_STRAINER = register("intake_strainer", IntakeStrainerBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.5F).sound(SoundType.METAL)
+			.noOcclusion().pushReaction(PushReaction.DESTROY));
+
 	public static final Block WATER_TANK_SMALL = register("water_tank_small",
 		props -> new PortableWaterTankBlock(props, TankSize.SMALL),
 		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_LIGHT_BLUE).strength(2.0F).sound(SoundType.METAL));
@@ -52,6 +59,11 @@ public final class ModBlocks {
 
 	public static final Block COMMAND_POST = register("command_post", CommandPostBlock::new,
 		BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5F).sound(SoundType.WOOD));
+
+	/** Placed connected nozzle — pick up with empty hand, not a free craft item. */
+	public static final Block GROUND_NOZZLE = register("ground_nozzle", GroundNozzleBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.8F).sound(SoundType.METAL)
+			.noOcclusion().pushReaction(PushReaction.DESTROY));
 
 	private ModBlocks() {
 	}

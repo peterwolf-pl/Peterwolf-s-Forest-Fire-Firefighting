@@ -25,6 +25,7 @@ public final class ModItems {
 	public static final Item HOSE_SPLITTER = blockItem("hose_splitter", ModBlocks.HOSE_SPLITTER);
 	public static final Item FIRE_HOSE = blockItem("fire_hose", ModBlocks.FIRE_HOSE);
 	public static final Item INTAKE_HOSE = blockItem("intake_hose", ModBlocks.INTAKE_HOSE);
+	public static final Item INTAKE_STRAINER = blockItem("intake_strainer", ModBlocks.INTAKE_STRAINER);
 	public static final Item WATER_TANK_SMALL = blockItem("water_tank_small", ModBlocks.WATER_TANK_SMALL);
 	public static final Item WATER_TANK_MEDIUM = blockItem("water_tank_medium", ModBlocks.WATER_TANK_MEDIUM);
 	public static final Item WATER_TANK_LARGE = blockItem("water_tank_large", ModBlocks.WATER_TANK_LARGE);
@@ -36,7 +37,6 @@ public final class ModItems {
 	public static final Item BACKPACK_SPRAYER = register("backpack_sprayer", BackpackSprayerItem::new);
 	public static final Item THERMAL_SCANNER = register("thermal_scanner", ThermalScannerItem::new);
 	public static final Item FIREFIGHTER_INFO = register("firefighter_info", FirefighterInfoItem::new);
-	public static final Item INTAKE_STRAINER = register("intake_strainer", Item::new);
 	public static final Item PUMP_FUEL_CAN = register("pump_fuel_can", PumpFuelCanItem::new);
 
 	public static final Item FIRE_AXE = register("fire_axe", p -> new FireToolItem(p, FireToolItem.ToolType.AXE));

@@ -81,9 +81,15 @@ public class PortablePumpBlock extends BaseEntityBlock {
 		}
 		BlockEntity be = level.getBlockEntity(pos);
 		if (be instanceof PortablePumpBlockEntity pump && player instanceof ServerPlayer serverPlayer) {
+			// Right-click = toggle ON/OFF (main action)
+			// Shift + right-click = status only
 			if (player.isShiftKeyDown()) {
-				pump.togglePower(serverPlayer);
+				for (Component line : pump.statusLines()) {
+					serverPlayer.sendSystemMessage(line);
+				}
 			} else {
+				pump.togglePower(serverPlayer);
+				// Always show short status after toggle
 				for (Component line : pump.statusLines()) {
 					serverPlayer.sendSystemMessage(line);
 				}

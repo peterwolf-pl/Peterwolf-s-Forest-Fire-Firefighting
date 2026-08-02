@@ -52,7 +52,9 @@ public class PortablePumpBlockEntity extends BlockEntity {
 		HoseNetwork.PumpLinks links = HoseNetwork.scan(level, worldPosition);
 		hasIntake = links.hasIntake;
 		hoseLength = links.outputLength;
-		connectedNozzles = links.activeNozzles;
+		// Prefer endpoint manager open-nozzle count for realistic multi-line load
+		int openNozzles = HoseNetwork.countConnectedNozzles(level, worldPosition);
+		connectedNozzles = Math.max(links.activeNozzles, openNozzles);
 		intakeWater = links.availableWater;
 		hasStrainer = links.hasStrainer;
 
@@ -134,7 +136,22 @@ public class PortablePumpBlockEntity extends BlockEntity {
 		if (state == PumpState.OFF || state == PumpState.STARVED || state == PumpState.OVERHEATED) {
 			if (fuel <= 0) {
 				player.sendSystemMessage(Component.translatable("message.peterwolfs_forestfire.pump_no_fuel"));
+				player.sendSystemMessage(Component.literal("Tip: use Pump Fuel Can on the pump."));
 				return;
+			}
+			// Refresh intake before start so first toggle works after placing intake hose
+			if (level instanceof ServerLevel serverLevel) {
+				HoseNetwork.PumpLinks links = HoseNetwork.scan(serverLevel, worldPosition);
+				hasIntake = links.hasIntake;
+				intakeWater = links.availableWater;
+				hasStrainer = links.hasStrainer;
+			}
+			if (!hasIntake || intakeWater <= 0) {
+				player.sendSystemMessage(Component.translatable("message.peterwolfs_forestfire.pump_no_intake"));
+				player.sendSystemMessage(Component.literal(
+					"Tip: place pump next to water OR connect Intake Hose into water. Optional: Intake Strainer in water."
+				));
+				// Still allow starting — will go STARVED if no water (helps debug)
 			}
 			state = PumpState.STARTING;
 			startTicks = 0;
@@ -143,6 +160,7 @@ public class PortablePumpBlockEntity extends BlockEntity {
 				level.playSound(null, worldPosition, ModSounds.PUMP_START, SoundSource.BLOCKS, 0.8F, 1.0F);
 			}
 			player.sendSystemMessage(Component.translatable("message.peterwolfs_forestfire.pump_starting"));
+			player.sendSystemMessage(Component.literal("§aPump STARTING → RUNNING. Right-click again to turn OFF."));
 		} else {
 			state = PumpState.OFF;
 			pressure = 0.0F;

@@ -10,6 +10,7 @@ import com.peterwolf.forestfire.command.WindCommands;
 import com.peterwolf.forestfire.config.ForestFireConfig;
 import com.peterwolf.forestfire.fire.simulation.BurningTreeCollapse;
 import com.peterwolf.forestfire.fire.simulation.FireWorldTicker;
+import com.peterwolf.forestfire.firefighting.nozzle.NozzleEvents;
 import com.peterwolf.forestfire.item.ModItems;
 import com.peterwolf.forestfire.network.ModNetworking;
 import com.peterwolf.forestfire.sound.ModSounds;
@@ -48,6 +49,7 @@ public final class ForestFireMod implements ModInitializer {
 		FireTestCommands.register();
 		FireWorldTicker.register();
 		FirePersistenceHooks.register();
+		NozzleEvents.register();
 		BurningTreeCollapse.init();
 		LOGGER.info("Peterwolf's Forest Fire & Firefighting initialized.");
 		LOGGER.info(DEDICATION);

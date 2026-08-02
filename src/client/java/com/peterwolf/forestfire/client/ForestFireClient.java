@@ -3,6 +3,7 @@ package com.peterwolf.forestfire.client;
 import com.peterwolf.forestfire.ForestFireMod;
 import com.peterwolf.forestfire.client.hud.FirefighterHud;
 import com.peterwolf.forestfire.network.IncidentHudPayload;
+import com.peterwolf.forestfire.network.NozzleHudPayload;
 import com.peterwolf.forestfire.network.WindSyncPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -16,6 +17,9 @@ public final class ForestFireClient implements ClientModInitializer {
 		);
 		ClientPlayNetworking.registerGlobalReceiver(WindSyncPayload.TYPE, (payload, context) ->
 			context.client().execute(() -> FirefighterHud.updateWind(payload))
+		);
+		ClientPlayNetworking.registerGlobalReceiver(NozzleHudPayload.TYPE, (payload, context) ->
+			context.client().execute(() -> FirefighterHud.updateNozzle(payload))
 		);
 		HudElementRegistry.addLast(ForestFireMod.id("firefighter_hud"), FirefighterHud::render);
 		ForestFireMod.LOGGER.info("Forest Fire client initialized. {}", ForestFireMod.DEDICATION);

@@ -14,6 +14,7 @@ public final class ModNetworking {
 	public static void register() {
 		PayloadTypeRegistry.clientboundPlay().register(IncidentHudPayload.TYPE, IncidentHudPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(WindSyncPayload.TYPE, WindSyncPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(NozzleHudPayload.TYPE, NozzleHudPayload.CODEC);
 	}
 
 	public static void sendHud(ServerPlayer player, IncidentHudPayload payload) {
@@ -21,6 +22,10 @@ public final class ModNetworking {
 	}
 
 	public static void sendWind(ServerPlayer player, WindSyncPayload payload) {
+		ServerPlayNetworking.send(player, payload);
+	}
+
+	public static void sendNozzleHud(ServerPlayer player, NozzleHudPayload payload) {
 		ServerPlayNetworking.send(player, payload);
 	}
 }

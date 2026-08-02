@@ -81,10 +81,31 @@ public final class HoseNetwork {
 			links.availableWater += local * 5;
 		}
 
-		// Strainer item is represented by a nearby marker block or pump flag — check for iron bars as stand-in strainer attach
+		// Strainer: dedicated block in/near water, iron bars, or next to intake path
 		for (Direction dir : Direction.values()) {
-			if (level.getBlockState(pumpPos.relative(dir)).is(Blocks.IRON_BARS)) {
+			BlockPos n = pumpPos.relative(dir);
+			BlockState ns = level.getBlockState(n);
+			if (ns.is(ModBlocks.INTAKE_STRAINER) || ns.is(Blocks.IRON_BARS)) {
 				links.hasStrainer = true;
+			}
+		}
+		// Also accept strainer along intake hose path (within short scan already done)
+		if (!links.hasStrainer) {
+			for (long key : intakeVisited) {
+				BlockPos p = BlockPos.of(key);
+				if (level.getBlockState(p).is(ModBlocks.INTAKE_STRAINER)) {
+					links.hasStrainer = true;
+					break;
+				}
+				for (Direction dir : Direction.values()) {
+					if (level.getBlockState(p.relative(dir)).is(ModBlocks.INTAKE_STRAINER)) {
+						links.hasStrainer = true;
+						break;
+					}
+				}
+				if (links.hasStrainer) {
+					break;
+				}
 			}
 		}
 
@@ -164,6 +185,50 @@ public final class HoseNetwork {
 		return level.getFluidState(pos).is(Fluids.WATER)
 			|| level.getBlockState(pos).is(Blocks.WATER)
 			|| level.getBlockState(pos).is(Blocks.WATER_CAULDRON);
+	}
+
+	/**
+	 * Graph distance from a hose position to the nearest pump block (not necessarily running).
+	 * Returns maxHoseLength if no pump is found.
+	 */
+	public static int distanceToPump(ServerLevel level, BlockPos hosePos) {
+		int max = ForestFireConfig.get().maxHoseLength;
+		Set<Long> visited = new HashSet<>();
+		ArrayDeque<Node> queue = new ArrayDeque<>();
+		queue.add(new Node(hosePos, 0));
+		visited.add(hosePos.asLong());
+		while (!queue.isEmpty()) {
+			Node node = queue.removeFirst();
+			if (node.length > max) {
+				continue;
+			}
+			BlockState state = level.getBlockState(node.pos);
+			if (state.is(ModBlocks.PORTABLE_PUMP)) {
+				return node.length;
+			}
+			for (Direction dir : Direction.values()) {
+				BlockPos next = node.pos.relative(dir);
+				if (!visited.add(next.asLong()) || !level.isLoaded(next)) {
+					continue;
+				}
+				BlockState ns = level.getBlockState(next);
+				if (ns.is(ModBlocks.FIRE_HOSE) || ns.is(ModBlocks.HOSE_SPLITTER)
+					|| ns.is(ModBlocks.PORTABLE_PUMP) || ns.is(ModBlocks.PORTABLE_SPRINKLER)
+					|| ns.is(ModBlocks.GROUND_NOZZLE)) {
+					queue.add(new Node(next, node.length + 1));
+				}
+			}
+		}
+		return max;
+	}
+
+	/**
+	 * Count open handheld/ground nozzles for pump load (used by pump scan optionally).
+	 */
+	public static int countConnectedNozzles(ServerLevel level, BlockPos pumpPos) {
+		// Endpoints are authoritative; HoseEndpointManager tallies open valves near this pump
+		return com.peterwolf.forestfire.firefighting.hose.HoseEndpointManager.get(level)
+			.countOpenNozzlesNear(pumpPos);
 	}
 
 	private record Node(BlockPos pos, int length) {

@@ -133,8 +133,11 @@ public final class ForestFireConfig {
 		public float waterHeatReduction = 12.0F;
 		public float waterMoistureGain = 18.0F;
 		public int maxHoseLength = 48;
+		/** Extra walk distance past the last hose anchor while holding a connected nozzle. */
+		public int nozzleFreeHoseBlocks = 16;
 		public float pressureLossPerSegment = 0.02F;
 		public float basePumpPressure = 1.0F;
+		public boolean nozzleHudEnabled = true;
 		public int smallTankCapacity = 2000;
 		public int mediumTankCapacity = 6000;
 		public int largeTankCapacity = 16000;

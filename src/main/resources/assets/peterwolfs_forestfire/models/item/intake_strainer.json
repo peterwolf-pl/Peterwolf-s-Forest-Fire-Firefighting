@@ -1,6 +1,3 @@
 {
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "peterwolfs_forestfire:item/intake_strainer"
-  }
+  "parent": "peterwolfs_forestfire:block/intake_strainer"
 }
