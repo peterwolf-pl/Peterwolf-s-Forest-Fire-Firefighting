@@ -2,12 +2,18 @@ package com.peterwolf.forestfire.firefighting.pump;
 
 import com.mojang.serialization.MapCodec;
 import com.peterwolf.forestfire.block.ModBlockEntities;
+import com.peterwolf.forestfire.item.HoseConnectorItem;
+import com.peterwolf.forestfire.item.HoseRollItem;
+import com.peterwolf.forestfire.item.ModItems;
+import com.peterwolf.forestfire.item.PumpFuelCanItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -74,15 +80,49 @@ public class PortablePumpBlock extends BaseEntityBlock {
 		return level.isClientSide() ? null : createTickerHelper(type, ModBlockEntities.PORTABLE_PUMP, PortablePumpBlockEntity::serverTick);
 	}
 
+	/**
+	 * Holding hose tools must NOT toggle the pump. Newer MC often routes item+block
+	 * clicks through {@code useItemOn} and may fall back to empty-hand toggle — so we
+	 * either PASS to Item.useOn or dispatch the item use ourselves.
+	 */
+	@Override
+	protected InteractionResult useItemOn(
+		ItemStack stack,
+		BlockState state,
+		Level level,
+		BlockPos pos,
+		Player player,
+		InteractionHand hand,
+		BlockHitResult hit
+	) {
+		if (isHoseTool(stack) || isFuelCan(stack) || isNozzle(stack)) {
+			// Force item use so hose rolls / connector / nozzle / fuel always win over power toggle
+			net.minecraft.world.item.context.UseOnContext ctx =
+				new net.minecraft.world.item.context.UseOnContext(level, player, hand, stack, hit);
+			InteractionResult itemResult = stack.useOn(ctx);
+			if (itemResult.consumesAction() || itemResult != InteractionResult.PASS) {
+				return itemResult;
+			}
+			return InteractionResult.PASS;
+		}
+		// Other items / default: empty-hand style pump control
+		return useWithoutItem(state, level, pos, player, hit);
+	}
+
 	@Override
 	protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
 		if (level.isClientSide()) {
 			return InteractionResult.SUCCESS;
 		}
+		// Safety: if something called this with a hose tool, still pass through
+		ItemStack main = player.getMainHandItem();
+		ItemStack off = player.getOffhandItem();
+		if (isHoseTool(main) || isHoseTool(off) || isFuelCan(main) || isFuelCan(off) || isNozzle(main) || isNozzle(off)) {
+			return InteractionResult.PASS;
+		}
+
 		BlockEntity be = level.getBlockEntity(pos);
 		if (be instanceof PortablePumpBlockEntity pump && player instanceof ServerPlayer serverPlayer) {
-			// Right-click = toggle ON/OFF (main action)
-			// Shift + right-click = status + hose connection summary
 			if (player.isShiftKeyDown()) {
 				for (Component line : pump.statusLines()) {
 					serverPlayer.sendSystemMessage(line);
@@ -97,7 +137,7 @@ public class PortablePumpBlock extends BaseEntityBlock {
 						));
 					} else {
 						serverPlayer.sendSystemMessage(Component.literal(
-							"Auto intake: none — use Hose Connector: pump intake face → water"
+							"Auto intake: none — hose roll: back of pump → water"
 						));
 					}
 					int lines = mgr.countAttackLines(pos);
@@ -105,7 +145,6 @@ public class PortablePumpBlock extends BaseEntityBlock {
 				}
 			} else {
 				pump.togglePower(serverPlayer);
-				// Always show short status after toggle
 				for (Component line : pump.statusLines()) {
 					serverPlayer.sendSystemMessage(line);
 				}
@@ -113,5 +152,26 @@ public class PortablePumpBlock extends BaseEntityBlock {
 			return InteractionResult.CONSUME;
 		}
 		return InteractionResult.PASS;
+	}
+
+	private static boolean isHoseTool(ItemStack stack) {
+		if (stack.isEmpty()) {
+			return false;
+		}
+		return stack.getItem() instanceof HoseRollItem
+			|| stack.getItem() instanceof HoseConnectorItem
+			|| stack.is(ModItems.HOSE_ROLL_SMALL)
+			|| stack.is(ModItems.HOSE_ROLL_STANDARD)
+			|| stack.is(ModItems.HOSE_ROLL_LARGE)
+			|| stack.is(ModItems.HOSE_CONNECTOR)
+			|| stack.is(ModItems.HOSE_ANCHOR);
+	}
+
+	private static boolean isFuelCan(ItemStack stack) {
+		return !stack.isEmpty() && (stack.getItem() instanceof PumpFuelCanItem || stack.is(ModItems.PUMP_FUEL_CAN));
+	}
+
+	private static boolean isNozzle(ItemStack stack) {
+		return !stack.isEmpty() && stack.is(ModItems.FIRE_HOSE_NOZZLE);
 	}
 }
