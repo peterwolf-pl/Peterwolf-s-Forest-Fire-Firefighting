@@ -1,5 +1,6 @@
 package com.peterwolf.forestfire.firefighting.water;
 
+import com.peterwolf.forestfire.config.ForestFireConfig;
 import com.peterwolf.forestfire.fire.incident.IncidentManager;
 import com.peterwolf.forestfire.fire.simulation.FireSimulation;
 import com.peterwolf.forestfire.firefighting.nozzle.NozzleMode;
@@ -15,10 +16,10 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Server-authoritative continuous water stream / fog cone.
- * No projectile entities — ray/cone sampling with a hard block budget.
+ * Soft water audio only (no gun/attack/shooting sounds). Strong pump extinguishing.
  */
 public final class NozzleWaterSimulation {
-	private static final int MAX_BLOCKS_PER_TICK = 48;
+	private static final int MAX_BLOCKS_PER_TICK = 96;
 
 	private NozzleWaterSimulation() {
 	}
@@ -37,10 +38,13 @@ public final class NozzleWaterSimulation {
 			return 0.0F;
 		}
 
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		float pumpBoost = Math.max(1.0F, cfg.pumpNozzleExtinguishMultiplier);
+
 		float effectivePressure = Mth.clamp(pressure01, 0.05F, 1.0F);
-		float range = mode.range * (0.45F + 0.55F * effectivePressure);
-		float cooling = mode.cooling * (0.5F + 0.5F * effectivePressure);
-		float radius = mode.radius * (0.7F + 0.3F * effectivePressure);
+		float range = mode.range * (0.55F + 0.55F * effectivePressure);
+		float cooling = mode.cooling * (0.65F + 0.55F * effectivePressure) * pumpBoost;
+		float radius = mode.radius * (0.85F + 0.35F * effectivePressure);
 
 		Vec3 eye = player.getEyePosition();
 		Vec3 look = player.getLookAngle();
@@ -49,40 +53,42 @@ public final class NozzleWaterSimulation {
 		int budget = MAX_BLOCKS_PER_TICK;
 
 		if (mode == NozzleMode.STRAIGHT_STREAM) {
-			// Narrow ray along look
 			HitResult hit = player.pick(range, 0.0F, false);
 			Vec3 end = hit.getType() == HitResult.Type.BLOCK
 				? hit.getLocation()
 				: eye.add(look.scale(range));
-			int steps = Math.max(1, (int) Math.ceil(range));
+			int steps = Math.max(1, (int) Math.ceil(range * 1.35));
 			for (int i = 1; i <= steps && budget > 0; i++) {
 				double t = i / (double) steps;
 				Vec3 p = eye.lerp(end, t);
 				BlockPos pos = BlockPos.containing(p);
-				float falloff = 1.0F - (float) t * 0.45F;
-				used += sim.applyWater(pos, cooling * falloff * 0.85F, Math.max(0.4F, radius * 0.5F));
-				budget--;
+				float falloff = 1.0F - (float) t * 0.30F;
+				// Strong core stream + small splash radius for extinguish
+				used += sim.applyWater(pos, cooling * falloff * 1.35F, Math.max(0.75F, radius * 0.85F));
+				// Wet neighbours along the jet (structure / brush)
+				if (i % 2 == 0) {
+					used += sim.applyWater(pos.below(), cooling * falloff * 0.55F, 0.6F);
+				}
+				budget -= 2;
 			}
 			spawnStreamParticles(level, eye, end, effectivePressure, false);
 		} else {
-			// Cone sample for fog
-			int rings = mode == NozzleMode.WIDE_FOG ? 3 : 2;
-			int rays = mode == NozzleMode.WIDE_FOG ? 10 : 7;
+			int rays = mode == NozzleMode.WIDE_FOG ? 14 : 10;
 			for (int ray = 0; ray < rays && budget > 0; ray++) {
-				float yawOff = (ray / (float) rays - 0.5F) * radius * 18.0F;
-				float pitchOff = ((ray % 3) - 1) * radius * 6.0F;
+				float yawOff = (ray / (float) rays - 0.5F) * radius * 20.0F;
+				float pitchOff = ((ray % 3) - 1) * radius * 7.0F;
 				Vec3 dir = rotateLook(look, yawOff, pitchOff);
 				int steps = Math.max(2, (int) Math.ceil(range));
 				for (int i = 1; i <= steps && budget > 0; i++) {
-					if (i % (rings == 3 ? 1 : 2) != 0 && i != steps) {
+					if (i % 2 != 0 && i != steps) {
 						continue;
 					}
 					double dist = (i / (double) steps) * range;
 					Vec3 p = eye.add(dir.scale(dist));
 					BlockPos pos = BlockPos.containing(p);
-					float falloff = 1.0F - (float) (dist / range) * 0.5F;
-					float r = radius * (0.4F + (float) (dist / range) * 0.8F);
-					used += sim.applyWater(pos, cooling * falloff * 0.55F, r);
+					float falloff = 1.0F - (float) (dist / range) * 0.35F;
+					float r = radius * (0.55F + (float) (dist / range) * 0.9F);
+					used += sim.applyWater(pos, cooling * falloff * 1.05F, r);
 					budget--;
 				}
 			}
@@ -90,9 +96,9 @@ public final class NozzleWaterSimulation {
 			spawnStreamParticles(level, eye, end, effectivePressure, true);
 		}
 
-		// Wide fog softens operator heat (small wetness near player)
 		if (mode == NozzleMode.WIDE_FOG) {
-			sim.applyWater(player.blockPosition(), 0.15F * effectivePressure, 1.2F);
+			sim.applyWater(player.blockPosition(), 0.35F * effectivePressure * pumpBoost, 1.6F);
+			sim.applyWater(player.blockPosition().above(), 0.2F * effectivePressure * pumpBoost, 1.2F);
 		}
 
 		final float waterUsed = used;
@@ -103,18 +109,33 @@ public final class NozzleWaterSimulation {
 			manager.markDirty();
 		});
 
-		float pitch = 1.2F + effectivePressure * 0.4F;
-		float volume = 0.25F + effectivePressure * 0.35F;
-		if (effectivePressure < 0.35F) {
-			pitch = 0.75F;
-			volume = 0.2F;
+		// Soft water only — never attack/bow/explosion; throttle to avoid spam
+		if (level.getGameTime() % 12L == 0L) {
+			float volume = 0.12F + effectivePressure * 0.18F;
+			float pitch = 0.85F + effectivePressure * 0.15F;
+			level.playSound(
+				null,
+				player.blockPosition(),
+				SoundEvents.WEATHER_RAIN,
+				SoundSource.AMBIENT,
+				volume,
+				pitch
+			);
+			if (effectivePressure > 0.45F && level.getGameTime() % 24L == 0L) {
+				level.playSound(
+					null,
+					player.blockPosition(),
+					SoundEvents.BUBBLE_COLUMN_WHIRLPOOL_AMBIENT,
+					SoundSource.AMBIENT,
+					0.08F + effectivePressure * 0.1F,
+					1.1F
+				);
+			}
 		}
-		level.playSound(null, player.blockPosition(), SoundEvents.GENERIC_SPLASH, SoundSource.PLAYERS, volume, pitch);
 		return used;
 	}
 
 	private static Vec3 rotateLook(Vec3 look, float yawDeg, float pitchDeg) {
-		// Approximate local yaw/pitch offset around look vector
 		double yaw = Math.toRadians(yawDeg);
 		double pitch = Math.toRadians(pitchDeg);
 		double cosY = Math.cos(yaw);
@@ -128,17 +149,17 @@ public final class NozzleWaterSimulation {
 	}
 
 	private static void spawnStreamParticles(ServerLevel level, Vec3 start, Vec3 end, float pressure, boolean fog) {
-		int steps = fog ? 6 : 5;
+		int steps = fog ? 8 : 6;
 		for (int i = 0; i < steps; i++) {
 			double t = i / (double) steps;
 			double px = start.x + (end.x - start.x) * t;
 			double py = start.y + (end.y - start.y) * t;
 			double pz = start.z + (end.z - start.z) * t;
-			double spread = fog ? 0.18 + t * 0.25 : 0.04;
-			level.sendParticles(ParticleTypes.SPLASH, px, py, pz, fog ? 4 : 2, spread, spread * 0.5, spread, 0.01);
-			level.sendParticles(ParticleTypes.RAIN, px, py, pz, fog ? 3 : 1, spread * 0.5, spread * 0.3, spread * 0.5, 0.0);
-			if (pressure > 0.6F && i > steps / 2) {
-				level.sendParticles(ParticleTypes.CLOUD, px, py, pz, 1, 0.05, 0.05, 0.05, 0.0);
+			double spread = fog ? 0.22 + t * 0.28 : 0.05;
+			level.sendParticles(ParticleTypes.SPLASH, px, py, pz, fog ? 6 : 3, spread, spread * 0.5, spread, 0.02);
+			level.sendParticles(ParticleTypes.RAIN, px, py, pz, fog ? 5 : 2, spread * 0.6, spread * 0.35, spread * 0.6, 0.0);
+			if (pressure > 0.5F && i > steps / 3) {
+				level.sendParticles(ParticleTypes.FALLING_WATER, px, py, pz, fog ? 2 : 1, spread * 0.3, 0.05, spread * 0.3, 0.0);
 			}
 		}
 	}

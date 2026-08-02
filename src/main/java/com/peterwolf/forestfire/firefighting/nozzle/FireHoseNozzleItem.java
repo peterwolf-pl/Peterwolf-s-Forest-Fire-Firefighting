@@ -1,5 +1,7 @@
 package com.peterwolf.forestfire.firefighting.nozzle;
 
+import com.peterwolf.forestfire.block.ModBlocks;
+import com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager;
 import com.peterwolf.forestfire.firefighting.hose.HoseEndpoint;
 import com.peterwolf.forestfire.firefighting.hose.HoseEndpointManager;
 import java.util.UUID;
@@ -22,13 +24,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Handheld fire hose nozzle.
+ * Handheld fire hose nozzle — assigned to one pump via automatic attack hose.
  *
- * Free nozzle: right-click ground near hose OR right-click hose → places connected ground nozzle.
- * Connected: hold use to spray; sneak+use cycles mode; sneak+use on ground places down.
+ * PPM: stream mode. LPM: water (NozzleInputController). Free+pump: connect.
  */
 public class FireHoseNozzleItem extends Item {
-	private static final int HOSE_SEARCH = 8;
+	private static final int PUMP_SEARCH = 48;
 
 	public FireHoseNozzleItem(Properties properties) {
 		super(properties.stacksTo(1));
@@ -73,38 +74,45 @@ public class FireHoseNozzleItem extends Item {
 		BlockPos clicked = context.getClickedPos();
 		UUID endpointId = getEndpointId(stack);
 		HoseEndpointManager manager = HoseEndpointManager.get(serverLevel);
+		HoseConnectionManager connections = HoseConnectionManager.get(serverLevel);
 
-		// 1) Free nozzle on hose block → connect + place next to hose
-		if (endpointId == null && HoseEndpointManager.isHoseAnchor(serverLevel, clicked)) {
-			BlockPos ground = resolvePlacePos(serverLevel, clicked, context.getClickedFace(), player);
-			if (ground == null) {
-				serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_invalid_place"));
-				return InteractionResult.FAIL;
-			}
-			HoseEndpoint ep = manager.connectAndPlace(
-				serverLevel, serverPlayer, ground, clicked,
-				player.getYRot(), player.getXRot(), getMode(stack)
-			);
-			if (ep != null) {
-				serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_connected"));
-				return InteractionResult.CONSUME;
-			}
-			return InteractionResult.FAIL;
+		// Free nozzle on pump → bind to THIS pump
+		if (endpointId == null && HoseEndpointManager.isPump(serverLevel, clicked)) {
+			boolean ok = connections.createAttackHeld(serverLevel, serverPlayer, clicked, getMode(stack));
+			return ok ? InteractionResult.CONSUME : InteractionResult.FAIL;
 		}
 
-		// 2) Connected nozzle on hose → disconnect (must be closed)
-		if (endpointId != null && HoseEndpointManager.isHoseAnchor(serverLevel, clicked) && !player.isShiftKeyDown()) {
+		// Free nozzle on splitter → nearest pump
+		if (endpointId == null && serverLevel.getBlockState(clicked).is(ModBlocks.HOSE_SPLITTER)) {
+			BlockPos pump = HoseEndpointManager.findNearbyPump(serverLevel, clicked, PUMP_SEARCH);
+			if (pump == null) {
+				serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_need_hose"));
+				return InteractionResult.FAIL;
+			}
+			boolean ok = connections.createAttackHeld(serverLevel, serverPlayer, pump, getMode(stack));
+			return ok ? InteractionResult.CONSUME : InteractionResult.FAIL;
+		}
+
+		// Connected nozzle on its pump → disconnect
+		if (endpointId != null && HoseEndpointManager.isPump(serverLevel, clicked) && !player.isShiftKeyDown()) {
 			HoseEndpoint ep = manager.get(endpointId).orElse(null);
 			if (ep != null) {
+				var conn = connections.findAttackByEndpoint(endpointId);
+				if (conn != null && !conn.sourcePos.equals(clicked)) {
+					serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_wrong_pump"));
+					return InteractionResult.FAIL;
+				}
+				if (ep.pumpPos != null && !ep.pumpPos.equals(clicked) && (conn == null || !conn.sourcePos.equals(clicked))) {
+					serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_wrong_pump"));
+					return InteractionResult.FAIL;
+				}
 				if (manager.disconnect(serverLevel, serverPlayer, ep)) {
-					// disconnect already gives free nozzle item
 					return InteractionResult.CONSUME;
 				}
 				return InteractionResult.FAIL;
 			}
 		}
 
-		// 3) Place on ground (free or connected) — no shift required for free near hose
 		BlockPos placePos = resolvePlacePos(serverLevel, clicked, context.getClickedFace(), player);
 		if (placePos == null) {
 			serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_invalid_place"));
@@ -112,13 +120,11 @@ public class FireHoseNozzleItem extends Item {
 		}
 
 		if (endpointId != null) {
-			// Connected: place back on ground (prefer sneak, but allow normal click on solid floor)
 			HoseEndpoint ep = manager.get(endpointId).orElse(null);
 			if (ep == null) {
 				stack.remove(ModDataComponents.NOZZLE_ENDPOINT_ID);
-				return placeFreeNearHose(serverLevel, serverPlayer, stack, placePos);
+				return placeFreeOnPump(serverLevel, serverPlayer, stack, placePos);
 			}
-			// Only place when sneaking OR clicking a solid top face (not air interaction)
 			if (player.isShiftKeyDown() || context.getClickedFace() == Direction.UP) {
 				if (ep.valve == NozzleValveState.OPEN) {
 					ep.closeValve();
@@ -130,40 +136,28 @@ public class FireHoseNozzleItem extends Item {
 			return InteractionResult.PASS;
 		}
 
-		// Free nozzle on any solid surface near hose
-		return placeFreeNearHose(serverLevel, serverPlayer, stack, placePos);
+		return placeFreeOnPump(serverLevel, serverPlayer, stack, placePos);
 	}
 
-	private static InteractionResult placeFreeNearHose(
-		ServerLevel level,
-		ServerPlayer player,
-		ItemStack stack,
-		BlockPos placePos
-	) {
-		BlockPos hose = HoseEndpointManager.findNearbyHose(level, placePos, HOSE_SEARCH);
-		if (hose == null) {
-			// Also search from player feet
-			hose = HoseEndpointManager.findNearbyHose(level, player.blockPosition(), HOSE_SEARCH);
+	private static InteractionResult placeFreeOnPump(ServerLevel level, ServerPlayer player, ItemStack stack, BlockPos placePos) {
+		BlockPos pump = HoseEndpointManager.findNearbyPump(level, placePos, PUMP_SEARCH);
+		if (pump == null) {
+			pump = HoseEndpointManager.findNearbyPump(level, player.blockPosition(), PUMP_SEARCH);
 		}
-		if (hose == null) {
+		if (pump == null) {
 			player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_need_hose"));
 			return InteractionResult.FAIL;
 		}
-		HoseEndpointManager manager = HoseEndpointManager.get(level);
-		HoseEndpoint ep = manager.connectAndPlace(
-			level, player, placePos, hose,
-			player.getYRot(), player.getXRot(), getMode(stack)
+		boolean ok = HoseConnectionManager.get(level).createAttackGround(
+			level, player, pump, placePos, player.getYRot(), player.getXRot(), getMode(stack)
 		);
-		if (ep != null) {
+		if (ok) {
 			player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_connected"));
 			return InteractionResult.CONSUME;
 		}
 		return InteractionResult.FAIL;
 	}
 
-	/**
-	 * Prefer the cell above the clicked face; if blocked, try top of clicked block or adjacent air.
-	 */
 	@Nullable
 	private static BlockPos resolvePlacePos(ServerLevel level, BlockPos clicked, Direction face, Player player) {
 		BlockPos preferred = clicked.relative(face);
@@ -173,14 +167,12 @@ public class FireHoseNozzleItem extends Item {
 		if (face != Direction.UP && canPlaceAt(level, clicked.above())) {
 			return clicked.above();
 		}
-		// Replaceable vegetation on the target cell
 		if (isReplaceableSurface(level, preferred)) {
 			return preferred;
 		}
 		if (isReplaceableSurface(level, clicked.above())) {
 			return clicked.above();
 		}
-		// Player feet if near click
 		BlockPos feet = player.blockPosition();
 		if (canPlaceAt(level, feet) && feet.closerThan(clicked, 3.0)) {
 			return feet;
@@ -201,8 +193,7 @@ public class FireHoseNozzleItem extends Item {
 
 	private static boolean isReplaceableSurface(ServerLevel level, BlockPos pos) {
 		BlockState state = level.getBlockState(pos);
-		return state.is(BlockTags.REPLACEABLE) || state.is(BlockTags.FLOWERS)
-			|| state.canBeReplaced();
+		return state.is(BlockTags.REPLACEABLE) || state.is(BlockTags.FLOWERS) || state.canBeReplaced();
 	}
 
 	@Override
@@ -210,29 +201,18 @@ public class FireHoseNozzleItem extends Item {
 		ItemStack stack = player.getItemInHand(hand);
 		UUID endpointId = getEndpointId(stack);
 
-		// Free nozzle in air
 		if (endpointId == null) {
-			if (player.isShiftKeyDown()) {
-				if (!level.isClientSide()) {
-					NozzleMode next = getMode(stack).cycleCombat();
-					setMode(stack, next);
-					player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_mode", next.label));
-				}
-				return InteractionResult.SUCCESS;
-			}
 			if (!level.isClientSide()) {
-				player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_need_hose"));
+				NozzleMode next = getMode(stack).cycleCombat();
+				setMode(stack, next);
+				player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_mode", next.label));
 			}
-			return InteractionResult.FAIL;
+			return InteractionResult.SUCCESS;
 		}
 
 		if (level.isClientSide()) {
-			if (!player.isShiftKeyDown()) {
-				player.startUsingItem(hand);
-			}
-			return InteractionResult.CONSUME;
+			return InteractionResult.SUCCESS;
 		}
-
 		if (!(level instanceof ServerLevel serverLevel) || !(player instanceof ServerPlayer serverPlayer)) {
 			return InteractionResult.PASS;
 		}
@@ -245,76 +225,34 @@ public class FireHoseNozzleItem extends Item {
 			return InteractionResult.FAIL;
 		}
 
-		if (player.isShiftKeyDown()) {
-			NozzleMode next = ep.mode.cycleCombat();
-			ep.mode = next;
-			setMode(stack, next);
+		NozzleMode next = ep.mode.cycleCombat();
+		ep.mode = next;
+		setMode(stack, next);
+		if (!next.allowsFlow()) {
 			ep.closeValve();
-			manager.setDirty();
-			serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_mode", next.label));
-			return InteractionResult.SUCCESS;
+			NozzleInputController.clear(serverPlayer.getUUID());
 		}
-
-		if (!ep.mode.allowsFlow()) {
-			serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_shutoff"));
-			return InteractionResult.FAIL;
-		}
-
-		ep.location = NozzleLocationState.HELD;
-		ep.operatorId = serverPlayer.getUUID();
-		ep.valve = NozzleValveState.OPEN;
 		manager.setDirty();
-		player.startUsingItem(hand);
-		return InteractionResult.CONSUME;
+		serverPlayer.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_mode", next.label));
+		return InteractionResult.SUCCESS;
 	}
 
 	@Override
 	public int getUseDuration(ItemStack stack, LivingEntity entity) {
-		return 72000;
+		return 0;
 	}
 
 	@Override
 	public ItemUseAnimation getUseAnimation(ItemStack stack) {
-		return ItemUseAnimation.BOW;
+		return ItemUseAnimation.NONE;
 	}
 
 	@Override
 	public boolean releaseUsing(ItemStack stack, Level level, LivingEntity entity, int timeLeft) {
-		if (level.isClientSide() || !(entity instanceof ServerPlayer) || !(level instanceof ServerLevel serverLevel)) {
-			return false;
-		}
-		UUID endpointId = getEndpointId(stack);
-		if (endpointId == null) {
-			return false;
-		}
-		HoseEndpointManager manager = HoseEndpointManager.get(serverLevel);
-		manager.get(endpointId).ifPresent(ep -> {
-			ep.closeValve();
-			manager.setDirty();
-		});
-		return true;
+		return false;
 	}
 
 	@Override
 	public void onUseTick(Level level, LivingEntity entity, ItemStack stack, int remainingUseDuration) {
-		if (level.isClientSide() || !(entity instanceof ServerPlayer player) || !(level instanceof ServerLevel serverLevel)) {
-			return;
-		}
-		UUID endpointId = getEndpointId(stack);
-		if (endpointId == null) {
-			player.stopUsingItem();
-			return;
-		}
-		HoseEndpointManager manager = HoseEndpointManager.get(serverLevel);
-		HoseEndpoint ep = manager.get(endpointId).orElse(null);
-		if (ep == null || !ep.connected) {
-			player.stopUsingItem();
-			return;
-		}
-		if (ep.mode.allowsFlow()) {
-			ep.valve = NozzleValveState.OPEN;
-			ep.operatorId = player.getUUID();
-			ep.location = NozzleLocationState.HELD;
-		}
 	}
 }

@@ -83,6 +83,12 @@ public final class HoseEndpointManager extends SavedData {
 		return Optional.ofNullable(endpoints.get(id));
 	}
 
+	/** Register an already-constructed endpoint (used by automatic hose deployment). */
+	public void putEndpoint(HoseEndpoint ep) {
+		endpoints.put(ep.id, ep);
+		setDirty();
+	}
+
 	public Optional<HoseEndpoint> byOperator(UUID playerId) {
 		for (HoseEndpoint ep : endpoints.values()) {
 			if (ep.isHeldBy(playerId)) {
@@ -105,8 +111,9 @@ public final class HoseEndpointManager extends SavedData {
 	/**
 	 * Create a new endpoint attached to a hose anchor and place ground nozzle.
 	 */
-	public HoseEndpoint createGround(ServerLevel level, BlockPos groundPos, BlockPos anchor, float yaw, float pitch, NozzleMode mode) {
-		HoseEndpoint ep = new HoseEndpoint(UUID.randomUUID(), anchor, groundPos);
+	public HoseEndpoint createGround(ServerLevel level, BlockPos groundPos, BlockPos pumpPos, float yaw, float pitch, NozzleMode mode) {
+		HoseEndpoint ep = new HoseEndpoint(UUID.randomUUID(), pumpPos, groundPos);
+		ep.bindPump(pumpPos);
 		ep.location = NozzleLocationState.GROUND;
 		ep.mode = mode == null ? NozzleMode.STRAIGHT_STREAM : mode;
 		ep.valve = NozzleValveState.CLOSED;
@@ -136,6 +143,10 @@ public final class HoseEndpointManager extends SavedData {
 		ep.location = NozzleLocationState.HELD;
 		ep.operatorId = player.getUUID();
 		ep.endpointPos = player.blockPosition();
+		// Keep automatic hose network; only move dynamic endpoint
+		HoseConnectionManager.get(level).onNozzleMoved(
+			level, ep.id, HosePathGenerator.playerHandEndpoint(player), HosePointType.PLAYER_ENDPOINT, player.blockPosition()
+		);
 		refreshMetrics(level, ep);
 
 		// Put single connected nozzle in main hand (no duplicates)
@@ -169,6 +180,9 @@ public final class HoseEndpointManager extends SavedData {
 		ep.endpointPos = placePos.immutable();
 		ep.yaw = yaw;
 		ep.pitch = pitch;
+		// Preserve hose connection; regenerate final section to ground nozzle
+		Vec3 tip = new Vec3(placePos.getX() + 0.5, placePos.getY() + 0.25, placePos.getZ() + 0.5);
+		HoseConnectionManager.get(level).onNozzleMoved(level, ep.id, tip, HosePointType.NOZZLE_ENDPOINT, placePos);
 		refreshMetrics(level, ep);
 
 		// Place block
@@ -219,6 +233,8 @@ public final class HoseEndpointManager extends SavedData {
 			player.sendOverlayMessage(Component.translatable("message.peterwolfs_forestfire.nozzle_close_first"));
 			return false;
 		}
+		// Retract automatic attack hose and return material
+		HoseConnectionManager.get(level).disconnectByNozzleEndpoint(level, player, ep.id);
 		ep.connected = false;
 		ep.location = NozzleLocationState.DISCONNECTED;
 		ep.closeValve();
@@ -289,16 +305,24 @@ public final class HoseEndpointManager extends SavedData {
 			if (!ep.connected) {
 				continue;
 			}
-			// Validate anchor still hose-like
-			if (!level.isLoaded(ep.anchorPos) || !isHoseAnchor(level, ep.anchorPos)) {
-				// Try re-anchor to nearest hose near endpoint
-				BlockPos found = findNearbyHose(level, ep.endpointPos, 4);
+			// Validate assigned pump + automatic attack hose
+			HoseConnection autoLink = HoseConnectionManager.get(level).findAttackByEndpoint(ep.id);
+			if (autoLink != null && autoLink.connected) {
+				ep.bindPump(autoLink.sourcePos);
+			} else if (ep.pumpPos != null && level.isLoaded(ep.pumpPos) && isPump(level, ep.pumpPos)) {
+				ep.anchorPos = ep.pumpPos;
+			} else if (ep.pumpPos != null && level.isLoaded(ep.pumpPos) && !isPump(level, ep.pumpPos)) {
+				ep.connected = false;
+				ep.closeValve();
+				ForestFireMod.LOGGER.debug("Nozzle {} lost assigned pump {}", ep.id, ep.pumpPos);
+			} else if (!level.isLoaded(ep.anchorPos) || !isHoseAnchor(level, ep.anchorPos)) {
+				BlockPos found = findNearbyPump(level, ep.endpointPos, 8);
 				if (found != null) {
-					ep.anchorPos = found;
+					ep.bindPump(found);
 				} else {
 					ep.connected = false;
 					ep.closeValve();
-					ForestFireMod.LOGGER.debug("Nozzle {} lost hose anchor", ep.id);
+					ForestFireMod.LOGGER.debug("Nozzle {} lost hose/pump assignment", ep.id);
 				}
 			}
 
@@ -342,8 +366,20 @@ public final class HoseEndpointManager extends SavedData {
 	}
 
 	private void tickSpray(ServerLevel level, ServerPlayer player, HoseEndpoint ep) {
-		// Prefer any pump on the line, even weakened — continuous attack must not hard-stop
-		PortablePumpBlockEntity pump = HoseNetwork.findAnyPump(level, ep.anchorPos);
+		// Strict: only the pump this nozzle is assigned to
+		PortablePumpBlockEntity pump = HoseNetwork.findPumpForEndpoint(level, ep.id);
+		if (pump == null && ep.pumpPos != null) {
+			BlockEntity be = level.getBlockEntity(ep.pumpPos);
+			if (be instanceof PortablePumpBlockEntity p) {
+				pump = p;
+			}
+		}
+		if (pump == null && ep.anchorPos != null && isPump(level, ep.anchorPos)) {
+			BlockEntity be = level.getBlockEntity(ep.anchorPos);
+			if (be instanceof PortablePumpBlockEntity p) {
+				pump = p;
+			}
+		}
 		if (pump == null) {
 			ep.pressure01 = 0.0F;
 			if (level.getGameTime() % 20L == 0L) {
@@ -372,22 +408,47 @@ public final class HoseEndpointManager extends SavedData {
 			}
 			return;
 		}
-		// Slight recoil
-		if (ep.mode != NozzleMode.WIDE_FOG) {
+		// Mild hose reaction only — no attack knockback feel
+		if (ep.mode == NozzleMode.STRAIGHT_STREAM && ep.pressure01 > 0.5F) {
 			Vec3 look = player.getLookAngle();
-			player.setDeltaMovement(player.getDeltaMovement().add(look.scale(-0.008 * ep.mode.pressureDemand * ep.pressure01)));
+			player.setDeltaMovement(player.getDeltaMovement().add(look.scale(-0.004 * ep.pressure01)));
 			player.hurtMarked = true;
 		}
 		NozzleWaterSimulation.spray(level, player, ep.mode, ep.pressure01);
 	}
 
 	private void applyHoseConstraint(ServerLevel level, ServerPlayer player, HoseEndpoint ep) {
-		double dx = player.getX() - (ep.anchorPos.getX() + 0.5);
-		double dz = player.getZ() - (ep.anchorPos.getZ() + 0.5);
-		double dist = Math.sqrt(dx * dx + dz * dz);
-		int max = Math.max(1, ep.maxReach);
-		ep.remainingDistance = (int) Math.max(0, Math.floor(max - dist));
-		ep.tension = HoseTension.fromRemaining(ep.remainingDistance, max);
+		// Prefer automatic hose connection tension (deployed vs path length)
+		HoseConnection auto = HoseConnectionManager.get(level).findAttackByEndpoint(ep.id);
+		double dx;
+		double dz;
+		double dist;
+		int max;
+		if (auto != null) {
+			Vec3 hand = HosePathGenerator.playerHandEndpoint(player);
+			auto.updateDynamicEndpoint(hand, HosePointType.PLAYER_ENDPOINT);
+			auto.refreshTension();
+			ep.tension = auto.tension;
+			ep.remainingDistance = (int) Math.max(0, Math.floor(auto.remainingSlack));
+			ep.maxReach = auto.deployedLength;
+			ep.hoseLengthFromPump = (int) Math.ceil(auto.currentPathLength);
+			dx = player.getX() - (auto.sourcePos.getX() + 0.5);
+			dz = player.getZ() - (auto.sourcePos.getZ() + 0.5);
+			dist = Math.sqrt(dx * dx + dz * dz);
+			// Also clamp by path length vs deployed
+			max = Math.max(1, auto.deployedLength);
+			if (auto.currentPathLength > auto.deployedLength) {
+				ep.tension = HoseTension.MAXIMUM;
+				ep.remainingDistance = 0;
+			}
+		} else {
+			dx = player.getX() - (ep.anchorPos.getX() + 0.5);
+			dz = player.getZ() - (ep.anchorPos.getZ() + 0.5);
+			dist = Math.sqrt(dx * dx + dz * dz);
+			max = Math.max(1, ep.maxReach);
+			ep.remainingDistance = (int) Math.max(0, Math.floor(max - dist));
+			ep.tension = HoseTension.fromRemaining(ep.remainingDistance, max);
+		}
 
 		if (ep.tension == HoseTension.TIGHT) {
 			// Resistance when moving further away
@@ -422,33 +483,54 @@ public final class HoseEndpointManager extends SavedData {
 	}
 
 	public int countOpenNozzlesNear(BlockPos pumpPos) {
+		return countOpenNozzlesOnPump(null, pumpPos);
+	}
+
+	/** Count open valves strictly assigned to this pump. */
+	public int countOpenNozzlesOnPump(@Nullable ServerLevel level, BlockPos pumpPos) {
 		int n = 0;
 		for (HoseEndpoint ep : endpoints.values()) {
-			if (!ep.connected) {
+			if (!ep.connected || ep.valve != NozzleValveState.OPEN || !ep.mode.allowsFlow()) {
 				continue;
 			}
-			if (ep.valve == NozzleValveState.OPEN && ep.mode.allowsFlow()) {
-				// Approximate: same general area (within max hose * 2)
-				if (ep.anchorPos.closerThan(pumpPos, ForestFireConfig.get().maxHoseLength + 8)) {
-					n++;
-				}
+			boolean assigned = ep.pumpPos != null && ep.pumpPos.equals(pumpPos);
+			if (!assigned && level != null) {
+				HoseConnection c = HoseConnectionManager.get(level).findAttackByEndpoint(ep.id);
+				assigned = c != null && c.connected && c.sourcePos.equals(pumpPos);
+			}
+			if (!assigned && ep.anchorPos.equals(pumpPos)) {
+				assigned = true;
+			}
+			if (assigned) {
+				n++;
 			}
 		}
 		return Math.max(0, n);
 	}
 
 	public void refreshMetrics(ServerLevel level, HoseEndpoint ep) {
-		int len = HoseNetwork.distanceToPump(level, ep.anchorPos);
-		ep.hoseLengthFromPump = len;
-		int maxHose = ForestFireConfig.get().maxHoseLength;
-		ep.maxReach = Math.max(4, maxHose - len + ForestFireConfig.get().nozzleFreeHoseBlocks);
-		PortablePumpBlockEntity pump = HoseNetwork.findSupplyingPump(level, ep.anchorPos);
-		if (pump != null && pump.canSupplyNozzle()) {
-			ep.pressure01 = Mth.clamp(pump.getPressure(), 0.0F, 1.0F);
-		} else {
-			ep.pressure01 = 0.0F;
-			if (ep.valve == NozzleValveState.OPEN) {
-				ep.closeValve();
+		HoseConnection auto = HoseConnectionManager.get(level).findAttackByEndpoint(ep.id);
+		if (auto != null && auto.connected) {
+			ep.bindPump(auto.sourcePos);
+			ep.hoseLengthFromPump = (int) Math.ceil(auto.currentPathLength);
+			ep.maxReach = Math.max(4, auto.deployedLength);
+			ep.tension = auto.tension;
+			ep.remainingDistance = (int) Math.max(0, Math.floor(auto.remainingSlack));
+			BlockEntity be = level.getBlockEntity(auto.sourcePos);
+			if (be instanceof PortablePumpBlockEntity pump) {
+				ep.pressure01 = Mth.clamp(pump.getPressure(), 0.0F, 1.0F);
+			} else {
+				ep.pressure01 = 0.0F;
+			}
+			return;
+		}
+		ep.hoseLengthFromPump = 0;
+		ep.maxReach = Math.max(4, ForestFireConfig.get().nozzleFreeHoseBlocks);
+		ep.pressure01 = 0.0F;
+		if (ep.pumpPos != null) {
+			BlockEntity be = level.getBlockEntity(ep.pumpPos);
+			if (be instanceof PortablePumpBlockEntity pump) {
+				ep.pressure01 = Mth.clamp(pump.getPressure() * 0.1F, 0.0F, 0.15F);
 			}
 		}
 	}
@@ -522,12 +604,47 @@ public final class HoseEndpointManager extends SavedData {
 
 	public static boolean isHoseAnchor(ServerLevel level, BlockPos pos) {
 		BlockState state = level.getBlockState(pos);
-		return state.is(ModBlocks.FIRE_HOSE) || state.is(ModBlocks.HOSE_SPLITTER)
+		return state.is(ModBlocks.HOSE_SPLITTER)
 			|| state.is(ModBlocks.PORTABLE_PUMP) || state.is(ModBlocks.PORTABLE_SPRINKLER);
+	}
+
+	/** True if pos is a portable pump (preferred auto-hose attach point). */
+	public static boolean isPump(ServerLevel level, BlockPos pos) {
+		return level.getBlockState(pos).is(ModBlocks.PORTABLE_PUMP);
+	}
+
+	@Nullable
+	public static BlockPos findNearbyPump(ServerLevel level, BlockPos origin, int radius) {
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+		BlockPos best = null;
+		int bestDist = Integer.MAX_VALUE;
+		int r = Math.min(radius, 48);
+		for (int dx = -r; dx <= r; dx++) {
+			for (int dy = -4; dy <= 4; dy++) {
+				for (int dz = -r; dz <= r; dz++) {
+					cursor.set(origin.getX() + dx, origin.getY() + dy, origin.getZ() + dz);
+					if (!level.isLoaded(cursor)) {
+						continue;
+					}
+					if (isPump(level, cursor)) {
+						int d = dx * dx + dy * dy + dz * dz;
+						if (d < bestDist) {
+							bestDist = d;
+							best = cursor.immutable();
+						}
+					}
+				}
+			}
+		}
+		return best;
 	}
 
 	@Nullable
 	public static BlockPos findNearbyHose(ServerLevel level, BlockPos origin, int radius) {
+		BlockPos pump = findNearbyPump(level, origin, radius);
+		if (pump != null) {
+			return pump;
+		}
 		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 		BlockPos best = null;
 		int bestDist = Integer.MAX_VALUE;

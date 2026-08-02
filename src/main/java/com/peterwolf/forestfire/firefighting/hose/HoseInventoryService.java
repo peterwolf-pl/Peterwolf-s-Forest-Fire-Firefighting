@@ -1,0 +1,117 @@
+package com.peterwolf.forestfire.firefighting.hose;
+
+import com.peterwolf.forestfire.config.ForestFireConfig;
+import com.peterwolf.forestfire.item.HoseRollItem;
+import com.peterwolf.forestfire.item.ModItems;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+
+/** Hose roll inventory only (legacy segment items removed). */
+public final class HoseInventoryService {
+	private HoseInventoryService() {
+	}
+
+	public static int countAvailable(ServerPlayer player, boolean intake) {
+		if (player.isCreative() && ForestFireConfig.get().creativeModeInfiniteHose) {
+			return Integer.MAX_VALUE / 4;
+		}
+		if (!ForestFireConfig.get().automaticHoseConsumesItems) {
+			return Integer.MAX_VALUE / 4;
+		}
+		int total = 0;
+		Inventory inv = player.getInventory();
+		for (int i = 0; i < inv.getContainerSize(); i++) {
+			ItemStack stack = inv.getItem(i);
+			if (stack.getItem() instanceof HoseRollItem) {
+				total += HoseRollItem.getRemaining(stack);
+			}
+		}
+		return total;
+	}
+
+	public static boolean consume(ServerPlayer player, int amount, boolean intake) {
+		if (amount <= 0) {
+			return true;
+		}
+		if (player.isCreative() && ForestFireConfig.get().creativeModeInfiniteHose) {
+			return true;
+		}
+		if (!ForestFireConfig.get().automaticHoseConsumesItems) {
+			return true;
+		}
+		if (countAvailable(player, intake) < amount) {
+			return false;
+		}
+		int remaining = amount;
+		Inventory inv = player.getInventory();
+		for (int i = 0; i < inv.getContainerSize() && remaining > 0; i++) {
+			ItemStack stack = inv.getItem(i);
+			if (!(stack.getItem() instanceof HoseRollItem)) {
+				continue;
+			}
+			int have = HoseRollItem.getRemaining(stack);
+			if (have <= 0) {
+				continue;
+			}
+			int take = Math.min(have, remaining);
+			remaining -= take;
+			int left = have - take;
+			if (left <= 0) {
+				inv.setItem(i, ItemStack.EMPTY);
+			} else {
+				HoseRollItem.setRemaining(stack, left);
+			}
+		}
+		return remaining <= 0;
+	}
+
+	public static void returnHose(ServerPlayer player, int amount, boolean intake) {
+		if (amount <= 0) {
+			return;
+		}
+		if (!ForestFireConfig.get().automaticHoseRetraction && !ForestFireConfig.get().returnFullHoseLength) {
+			return;
+		}
+		int left = amount;
+		if (ForestFireConfig.get().hoseDamageLossEnabled) {
+			left = Math.max(0, (int) (left * 0.9));
+		}
+		while (left >= 64) {
+			giveRoll(player, ModItems.HOSE_ROLL_LARGE, 64);
+			left -= 64;
+		}
+		while (left >= 32) {
+			giveRoll(player, ModItems.HOSE_ROLL_STANDARD, 32);
+			left -= 32;
+		}
+		while (left >= 16) {
+			giveRoll(player, ModItems.HOSE_ROLL_SMALL, 16);
+			left -= 16;
+		}
+		if (left > 0) {
+			ItemStack partial = new ItemStack(ModItems.HOSE_ROLL_SMALL);
+			HoseRollItem.setRemaining(partial, left);
+			if (!player.getInventory().add(partial)) {
+				player.drop(partial, false);
+			}
+		}
+	}
+
+	public static void returnUnused(ServerPlayer player, int unused) {
+		if (unused > 0) {
+			returnHose(player, unused, false);
+		}
+	}
+
+	private static void giveRoll(ServerPlayer player, Item item, int capacity) {
+		ItemStack stack = new ItemStack(item);
+		if (item instanceof HoseRollItem) {
+			HoseRollItem.setRemaining(stack, capacity);
+		}
+		if (!player.getInventory().add(stack)) {
+			player.drop(stack, false);
+		}
+	}
+}

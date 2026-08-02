@@ -363,6 +363,49 @@ def backpack_sprayer() -> Canvas:
     return c
 
 
+
+def hose_roll_small() -> Canvas:
+    return hose_roll_icon((47, 132, 183, 255), 2)
+
+def hose_roll_standard() -> Canvas:
+    return hose_roll_icon((247, 196, 49, 255), 3)
+
+def hose_roll_large() -> Canvas:
+    return hose_roll_icon((225, 67, 45, 255), 4)
+
+def hose_roll_icon(badge, coils: int) -> Canvas:
+    c = Canvas(16, 16)
+    c.rect(3, 12, 13, 14, (0, 0, 0, 60))
+    for r_out, r_in, col in ((6, 3, RED), (6, 5, RED_DARK), (5, 4, RED_LIGHT), (3, 1, RUBBER), (2, 0, STEEL)):
+        for y in range(16):
+            for x in range(16):
+                d2 = (x - 8) ** 2 + (y - 8) ** 2
+                if r_in * r_in <= d2 <= r_out * r_out:
+                    c.set(x, y, col)
+    c.set(8, 8, BRASS)
+    c.rect(12, 6, 14, 9, BRASS)
+    c.rect(13, 7, 15, 8, BRASS_LIGHT)
+    c.rect(1, 1, 5, 5, badge)
+    c.rect(2, 2, 4, 4, WHITE)
+    return c
+
+def hose_connector() -> Canvas:
+    c = Canvas(16, 16)
+    c.rect(6, 2, 9, 13, STEEL)
+    c.rect(5, 3, 10, 5, BRASS)
+    c.rect(5, 10, 10, 12, BRASS)
+    c.rect(4, 5, 6, 10, STEEL_LIGHT)
+    c.rect(9, 5, 11, 10, STEEL_LIGHT)
+    return c
+
+def hose_anchor() -> Canvas:
+    c = Canvas(16, 16)
+    c.rect(7, 2, 8, 12, STEEL)
+    c.rect(3, 12, 12, 14, STEEL_DARK)
+    c.rect(4, 11, 11, 13, STEEL)
+    c.rect(6, 1, 9, 3, BRASS)
+    return c
+
 ITEM_GENERATORS = {
     "air_tank": air_tank,
     "backpack_sprayer": backpack_sprayer,
@@ -380,13 +423,16 @@ ITEM_GENERATORS = {
     "pulaski": pulaski,
     "pump_fuel_can": pump_fuel_can,
     "thermal_scanner": thermal_scanner,
+    "hose_roll_small": hose_roll_small,
+    "hose_roll_standard": hose_roll_standard,
+    "hose_roll_large": hose_roll_large,
+    "hose_connector": hose_connector,
+    "hose_anchor": hose_anchor,
 }
 
 BLOCK_ITEMS = (
     "portable_pump",
     "hose_splitter",
-    "fire_hose",
-    "intake_hose",
     "water_tank_small",
     "water_tank_medium",
     "water_tank_large",
@@ -754,9 +800,6 @@ def write_model(name: str, value: dict) -> None:
 
 def generate_models() -> None:
     write_model("portable_pump", portable_pump_model())
-    write_model("fire_hose", hose_model(False))
-    write_model("fire_hose_pressurised", hose_model(True))
-    write_model("intake_hose", intake_hose_model())
     write_model("hose_splitter", splitter_model())
     write_model("water_tank_small", tank_model("small"))
     write_model("water_tank_medium", tank_model("medium"))

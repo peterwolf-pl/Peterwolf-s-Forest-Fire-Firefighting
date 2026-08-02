@@ -38,13 +38,15 @@
 	},
 	"suggests": {
 		"modmenu": "*",
-		"peterwolfs_realistic_tree_felling": "*"
+		"peterwolfs_realistic_tree_felling": "*",
+		"peterwolfs_planes": "*"
 	},
 	"custom": {
 		"modmenu": {
 			"links": {
 				"modmenu.discord": ""
 			}
-		}
+		},
+		"peterwolfs_forestfire:planes_compat": "Optional firefighting water bomber requires peterwolfs_planes"
 	}
 }

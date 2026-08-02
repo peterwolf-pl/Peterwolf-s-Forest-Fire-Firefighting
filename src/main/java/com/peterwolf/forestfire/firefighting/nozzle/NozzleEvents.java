@@ -7,10 +7,13 @@ import java.util.UUID;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 
 /**
@@ -23,15 +26,38 @@ public final class NozzleEvents {
 	public static void register() {
 		ServerTickEvents.END_LEVEL_TICK.register(level -> {
 			if (level instanceof ServerLevel serverLevel) {
+				com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager.get(serverLevel).tick(serverLevel);
 				HoseEndpointManager.get(serverLevel).tick(serverLevel);
+			}
+		});
+
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			ServerPlayer player = handler.getPlayer();
+			if (player.level() instanceof ServerLevel level) {
+				com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager.get(level).syncToPlayer(player);
 			}
 		});
 
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
 			ServerPlayer player = handler.getPlayer();
+			NozzleInputController.clear(player.getUUID());
 			if (player.level() instanceof ServerLevel level) {
 				HoseEndpointManager.get(level).releaseOperator(level, player.getUUID(), true);
 			}
+		});
+
+		// Connected nozzle: LPM must not mine blocks / hit entities (water only, no attack)
+		AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
+			if (holdsConnectedNozzle(player.getItemInHand(hand)) || holdsConnectedNozzle(player.getMainHandItem())) {
+				return InteractionResult.SUCCESS;
+			}
+			return InteractionResult.PASS;
+		});
+		AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+			if (holdsConnectedNozzle(player.getItemInHand(hand)) || holdsConnectedNozzle(player.getMainHandItem())) {
+				return InteractionResult.SUCCESS;
+			}
+			return InteractionResult.PASS;
 		});
 
 		ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
@@ -81,6 +107,7 @@ public final class NozzleEvents {
 	}
 
 	private static void clearHeldEndpointItems(ServerPlayer player) {
+		NozzleInputController.clear(player.getUUID());
 		for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
 			ItemStack stack = player.getInventory().getItem(i);
 			if (stack.is(ModItems.FIRE_HOSE_NOZZLE)) {
@@ -90,5 +117,13 @@ public final class NozzleEvents {
 				}
 			}
 		}
+	}
+
+	private static boolean holdsConnectedNozzle(ItemStack stack) {
+		if (!stack.is(ModItems.FIRE_HOSE_NOZZLE)) {
+			return false;
+		}
+		String id = stack.get(ModDataComponents.NOZZLE_ENDPOINT_ID);
+		return id != null && !id.isEmpty();
 	}
 }

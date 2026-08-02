@@ -16,16 +16,21 @@ import net.fabricmc.loader.api.FabricLoader;
  */
 public final class ForestFireConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-	private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("peterwolfs_forestfire.json");
 	private static Data data = new Data();
 
 	private ForestFireConfig() {
 	}
 
+	/** Lazy so pure unit tests can use defaults without a Fabric runtime. */
+	public static Path path() {
+		return FabricLoader.getInstance().getConfigDir().resolve("peterwolfs_forestfire.json");
+	}
+
 	public static void load() {
+		Path configPath = path();
 		try {
-			if (Files.exists(PATH)) {
-				try (Reader reader = Files.newBufferedReader(PATH)) {
+			if (Files.exists(configPath)) {
+				try (Reader reader = Files.newBufferedReader(configPath)) {
 					Data loaded = GSON.fromJson(reader, Data.class);
 					if (loaded != null) {
 						data = loaded;
@@ -34,18 +39,24 @@ public final class ForestFireConfig {
 			}
 			data.sanitize();
 			save();
-			ForestFireMod.LOGGER.info("Loaded config from {}", PATH);
+			ForestFireMod.LOGGER.info("Loaded config from {}", configPath);
 		} catch (IOException | RuntimeException exception) {
 			ForestFireMod.LOGGER.error("Failed to load config, using defaults", exception);
 			data = new Data();
-			save();
+			try {
+				data.sanitize();
+				save();
+			} catch (RuntimeException ignored) {
+				// Offline unit tests may lack a Fabric environment.
+			}
 		}
 	}
 
 	public static void save() {
+		Path configPath = path();
 		try {
-			Files.createDirectories(PATH.getParent());
-			try (Writer writer = Files.newBufferedWriter(PATH)) {
+			Files.createDirectories(configPath.getParent());
+			try (Writer writer = Files.newBufferedWriter(configPath)) {
 				GSON.toJson(data, writer);
 			}
 		} catch (IOException exception) {
@@ -57,8 +68,10 @@ public final class ForestFireConfig {
 		return data;
 	}
 
-	public static Path path() {
-		return PATH;
+	/** Test hook: apply defaults without disk I/O. */
+	public static void resetToDefaultsForTests() {
+		data = new Data();
+		data.sanitize();
 	}
 
 	public static final class Data {
@@ -130,14 +143,36 @@ public final class ForestFireConfig {
 
 		// --- Water / wetness ---
 		public int wetnessDurationTicks = 2400;
-		public float waterHeatReduction = 12.0F;
-		public float waterMoistureGain = 18.0F;
+		/** Base heat removed per water application unit (higher = faster extinguish). */
+		public float waterHeatReduction = 22.0F;
+		/** Moisture added per water unit (helps full extinguish + re-ignition prevention). */
+		public float waterMoistureGain = 28.0F;
+		/** Extra multiplier for pump-fed nozzle streams (not backpack). */
+		public float pumpNozzleExtinguishMultiplier = 1.65F;
 		public int maxHoseLength = 48;
 		/** Extra walk distance past the last hose anchor while holding a connected nozzle. */
 		public int nozzleFreeHoseBlocks = 16;
 		public float pressureLossPerSegment = 0.02F;
 		public float basePumpPressure = 1.0F;
 		public boolean nozzleHudEnabled = true;
+
+		// --- Automatic hose deployment ---
+		/** Consume hose roll / segment items when auto-deploying. */
+		public boolean automaticHoseConsumesItems = true;
+		/** Creative players get infinite hose when true. */
+		public boolean creativeModeInfiniteHose = true;
+		public boolean automaticHoseRetraction = true;
+		public boolean returnFullHoseLength = true;
+		public boolean hoseDamageLossEnabled = false;
+		public int maximumIntakeHoseLength = 24;
+		public int maximumIntakeVerticalLift = 6;
+		public boolean intakeLengthPressureLoss = true;
+		/** If true, only one direct ATTACK line per pump (splitters still allowed). */
+		public boolean singleAttackLinePerPump = false;
+		/** Client hose render distance (blocks). */
+		public int hoseRenderDistance = 96;
+		/** Held-nozzle movement (blocks²) before regenerating final path segment. */
+		public float hoseEndpointMoveThreshold = 0.25F;
 		public int smallTankCapacity = 2000;
 		public int mediumTankCapacity = 6000;
 		public int largeTankCapacity = 16000;
@@ -176,11 +211,77 @@ public final class ForestFireConfig {
 		public float scoreWaterEfficiencyWeight = 10.0F;
 		public float scoreTeamworkWeight = 10.0F;
 
+		// --- Firefighting aircraft (requires Peterwolf's Planes) ---
+		public FirefightingAircraft firefightingAircraft = new FirefightingAircraft();
+
 		// --- Debug ---
 		public boolean debugLogging = false;
 		public boolean showDedicationOnTitle = true;
 
+		public static final class FirefightingAircraft {
+			public boolean enabled = true;
+			public int tankCapacity = 12000;
+			public int waterIntakeRatePerTick = 30;
+			public int waterReleaseRatePerTick = 80;
+			public double maximumWaterDistanceBlocks = 3.0;
+			/** Horizontal speed (blocks/tick) — matches Planes physics units. */
+			public double minimumScoopingSpeed = 0.25;
+			public double maximumScoopingSpeed = 0.85;
+			public float maximumScoopingRollDegrees = 20.0F;
+			public float maximumScoopingPitchDegrees = 15.0F;
+			/** Extra mass factor at full tank (added on top of 1.0 empty). */
+			public float waterWeightPhysicsMultiplier = 1.0F;
+			public float maxCargoMassBonus = 0.55F;
+			public int wetnessDurationTicks = 2400;
+			public int maximumSuppressionOperationsPerTick = 500;
+			public boolean enableSubsystemDamage = false;
+			public boolean autoRetractHoseAtUnsafeSpeed = true;
+			public double autoRetractSpeed = 1.05;
+			public int hoseNotOverWaterTimeoutTicks = 40;
+			public float dropStrength = 1.35F;
+			public float dropBaseRadius = 2.5F;
+			public float dropRadiusPerAltitude = 0.12F;
+			public int maxActiveWaterPayloads = 48;
+			public int waterSyncThreshold = 25;
+			public boolean finiteWaterExtraction = false;
+			public boolean debugMetrics = false;
+
+			void sanitize() {
+				tankCapacity = Math.max(100, Math.min(500_000, tankCapacity));
+				waterIntakeRatePerTick = Math.max(1, Math.min(5000, waterIntakeRatePerTick));
+				waterReleaseRatePerTick = Math.max(1, Math.min(10000, waterReleaseRatePerTick));
+				maximumWaterDistanceBlocks = clampD(maximumWaterDistanceBlocks, 0.5, 16.0);
+				minimumScoopingSpeed = clampD(minimumScoopingSpeed, 0.0, 2.0);
+				maximumScoopingSpeed = clampD(maximumScoopingSpeed, minimumScoopingSpeed, 4.0);
+				maximumScoopingRollDegrees = clamp(maximumScoopingRollDegrees, 5.0F, 80.0F);
+				maximumScoopingPitchDegrees = clamp(maximumScoopingPitchDegrees, 5.0F, 60.0F);
+				waterWeightPhysicsMultiplier = clamp(waterWeightPhysicsMultiplier, 0.0F, 3.0F);
+				maxCargoMassBonus = clamp(maxCargoMassBonus, 0.0F, 2.0F);
+				wetnessDurationTicks = Math.max(20, Math.min(72000, wetnessDurationTicks));
+				maximumSuppressionOperationsPerTick = Math.max(10, Math.min(5000, maximumSuppressionOperationsPerTick));
+				autoRetractSpeed = clampD(autoRetractSpeed, maximumScoopingSpeed, 5.0);
+				hoseNotOverWaterTimeoutTicks = Math.max(5, Math.min(200, hoseNotOverWaterTimeoutTicks));
+				dropStrength = clamp(dropStrength, 0.1F, 10.0F);
+				dropBaseRadius = clamp(dropBaseRadius, 0.5F, 12.0F);
+				dropRadiusPerAltitude = clamp(dropRadiusPerAltitude, 0.0F, 1.0F);
+				maxActiveWaterPayloads = Math.max(4, Math.min(256, maxActiveWaterPayloads));
+				waterSyncThreshold = Math.max(1, Math.min(1000, waterSyncThreshold));
+			}
+
+			private static float clamp(float value, float minimum, float maximum) {
+				return Math.max(minimum, Math.min(maximum, value));
+			}
+
+			private static double clampD(double value, double minimum, double maximum) {
+				return Math.max(minimum, Math.min(maximum, value));
+			}
+		}
+
 		private void sanitize() {
+			if (firefightingAircraft == null) {
+				firefightingAircraft = new FirefightingAircraft();
+			}
+			firefightingAircraft.sanitize();
 			minimumWindSpeed = finiteOr(minimumWindSpeed, 0.0F);
 			maximumWindSpeed = finiteOr(maximumWindSpeed, 1.0F);
 			minimumWindSpeed = clamp(minimumWindSpeed, 0.0F, 4.0F);

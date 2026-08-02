@@ -17,6 +17,7 @@ import com.peterwolf.forestfire.sound.ModSounds;
 import com.peterwolf.forestfire.world.FireChunkTickets;
 import com.peterwolf.forestfire.world.FirePersistenceHooks;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,8 +52,26 @@ public final class ForestFireMod implements ModInitializer {
 		FirePersistenceHooks.register();
 		NozzleEvents.register();
 		BurningTreeCollapse.init();
+		initPlanesCompat();
 		LOGGER.info("Peterwolf's Forest Fire & Firefighting initialized.");
 		LOGGER.info(DEDICATION);
+	}
+
+	/**
+	 * Soft-load Planes integration so missing dependency never class-loads plane types.
+	 */
+	private static void initPlanesCompat() {
+		if (!FabricLoader.getInstance().isModLoaded("peterwolfs_planes")) {
+			LOGGER.info("Peterwolf's Planes not installed — firefighting aircraft disabled.");
+			return;
+		}
+		try {
+			Class.forName("com.peterwolf.forestfire.compat.planes.PlanesCompat")
+				.getMethod("init")
+				.invoke(null);
+		} catch (ReflectiveOperationException exception) {
+			LOGGER.error("Failed to initialize Planes firefighting aircraft compat", exception);
+		}
 	}
 
 	public static Identifier id(String path) {

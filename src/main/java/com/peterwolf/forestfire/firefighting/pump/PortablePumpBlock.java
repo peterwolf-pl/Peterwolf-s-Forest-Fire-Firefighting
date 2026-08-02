@@ -82,10 +82,26 @@ public class PortablePumpBlock extends BaseEntityBlock {
 		BlockEntity be = level.getBlockEntity(pos);
 		if (be instanceof PortablePumpBlockEntity pump && player instanceof ServerPlayer serverPlayer) {
 			// Right-click = toggle ON/OFF (main action)
-			// Shift + right-click = status only
+			// Shift + right-click = status + hose connection summary
 			if (player.isShiftKeyDown()) {
 				for (Component line : pump.statusLines()) {
 					serverPlayer.sendSystemMessage(line);
+				}
+				if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+					var mgr = com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager.get(serverLevel);
+					var intake = mgr.scanIntake(serverLevel, pos);
+					if (intake.hasIntake()) {
+						serverPlayer.sendSystemMessage(Component.literal(
+							"Auto intake: OK len=" + intake.intakeLength()
+								+ " eff=" + String.format("%.0f%%", intake.efficiency() * 100)
+						));
+					} else {
+						serverPlayer.sendSystemMessage(Component.literal(
+							"Auto intake: none — use Hose Connector: pump intake face → water"
+						));
+					}
+					int lines = mgr.countAttackLines(pos);
+					serverPlayer.sendSystemMessage(Component.literal("Auto attack lines: " + lines));
 				}
 			} else {
 				pump.togglePower(serverPlayer);

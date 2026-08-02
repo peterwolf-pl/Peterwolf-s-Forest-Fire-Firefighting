@@ -18,5 +18,5 @@ Matches the staged plan from the design document.
 1. Full command-post screen with map markers
 2. Unique pump/hose sounds
 3. Fluid API for modded tanks
-4. Aircraft / air support role (optional)
+4. Aircraft / air support role — **core implemented** (water bomber + Planes API); polish mesh/sounds/subsystem damage next
 5. Automated GameTest suite for spread and hose pressure

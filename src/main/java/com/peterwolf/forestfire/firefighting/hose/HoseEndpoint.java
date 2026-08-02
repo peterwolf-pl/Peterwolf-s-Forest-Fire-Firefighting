@@ -12,14 +12,14 @@ import net.minecraft.core.UUIDUtil;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Authoritative nozzle endpoint on a hose network.
- * Item NBT only stores {@link #id}; all other state lives here.
+ * Authoritative nozzle endpoint. Bound to a specific pump via {@link #pumpPos}.
  */
 public final class HoseEndpoint {
 	public static final Codec<HoseEndpoint> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 		UUIDUtil.STRING_CODEC.fieldOf("id").forGetter(e -> e.id),
 		BlockPos.CODEC.fieldOf("anchor").forGetter(e -> e.anchorPos),
 		BlockPos.CODEC.fieldOf("endpoint").forGetter(e -> e.endpointPos),
+		BlockPos.CODEC.optionalFieldOf("pump").forGetter(e -> Optional.ofNullable(e.pumpPos)),
 		Codec.STRING.fieldOf("location").forGetter(e -> e.location.name()),
 		Codec.STRING.fieldOf("mode").forGetter(e -> e.mode.name()),
 		Codec.STRING.fieldOf("valve").forGetter(e -> e.valve.name()),
@@ -32,9 +32,9 @@ public final class HoseEndpoint {
 	).apply(instance, HoseEndpoint::fromCodec));
 
 	public final UUID id;
-	/** Last fixed hose coupling / hose block the line attaches to. */
 	public BlockPos anchorPos;
-	/** Current nozzle tip (player feet/hand or ground block). */
+	@Nullable
+	public BlockPos pumpPos;
 	public BlockPos endpointPos;
 	public NozzleLocationState location;
 	public NozzleMode mode;
@@ -42,21 +42,19 @@ public final class HoseEndpoint {
 	@Nullable
 	public UUID operatorId;
 	public int hoseLengthFromPump;
-	/** How far the operator may walk beyond the anchor (slack). */
 	public int maxReach;
 	public float yaw;
 	public float pitch;
 	public boolean connected;
-	/** Cached pressure 0–1 at nozzle for HUD. */
 	public float pressure01;
 	public HoseTension tension = HoseTension.SLACK;
 	public int remainingDistance;
-	/** Consecutive ticks the operator inventory lost the connected item (grace before auto-drop). */
 	public int missingHoldTicks;
 
 	public HoseEndpoint(UUID id, BlockPos anchor, BlockPos endpoint) {
 		this.id = id;
 		this.anchorPos = anchor.immutable();
+		this.pumpPos = anchor.immutable();
 		this.endpointPos = endpoint.immutable();
 		this.location = NozzleLocationState.GROUND;
 		this.mode = NozzleMode.STRAIGHT_STREAM;
@@ -72,20 +70,12 @@ public final class HoseEndpoint {
 	}
 
 	private static HoseEndpoint fromCodec(
-		UUID id,
-		BlockPos anchor,
-		BlockPos endpoint,
-		String location,
-		String mode,
-		String valve,
-		Optional<UUID> operator,
-		int hoseLength,
-		int maxReach,
-		float yaw,
-		float pitch,
-		boolean connected
+		UUID id, BlockPos anchor, BlockPos endpoint, Optional<BlockPos> pump,
+		String location, String mode, String valve, Optional<UUID> operator,
+		int hoseLength, int maxReach, float yaw, float pitch, boolean connected
 	) {
 		HoseEndpoint ep = new HoseEndpoint(id, anchor, endpoint);
+		ep.pumpPos = pump.orElse(anchor).immutable();
 		ep.location = NozzleLocationState.byName(location);
 		ep.mode = NozzleMode.byName(mode);
 		ep.valve = NozzleValveState.byName(valve);
@@ -99,11 +89,20 @@ public final class HoseEndpoint {
 		return ep;
 	}
 
+	public void bindPump(BlockPos pump) {
+		this.pumpPos = pump.immutable();
+		this.anchorPos = pump.immutable();
+	}
+
 	public void closeValve() {
 		valve = NozzleValveState.CLOSED;
 	}
 
 	public boolean isHeldBy(UUID playerId) {
 		return location == NozzleLocationState.HELD && playerId.equals(operatorId);
+	}
+
+	public boolean isAssignedToPump(BlockPos pump) {
+		return pumpPos != null && pumpPos.equals(pump);
 	}
 }

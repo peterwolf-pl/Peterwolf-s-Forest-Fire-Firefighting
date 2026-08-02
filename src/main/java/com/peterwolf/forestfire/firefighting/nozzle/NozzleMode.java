@@ -6,9 +6,12 @@ package com.peterwolf.forestfire.firefighting.nozzle;
  */
 public enum NozzleMode {
 	SHUTOFF(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, "Shutoff"),
-	STRAIGHT_STREAM(14.0F, 0.55F, 0.55F, 0.85F, 0.55F, "Straight Stream"),
-	NARROW_FOG(8.0F, 1.5F, 1.0F, 0.65F, 0.85F, "Narrow Fog"),
-	WIDE_FOG(4.0F, 2.6F, 1.25F, 0.40F, 1.15F, "Wide Fog");
+	/** Long reach jet — strong point extinguish. */
+	STRAIGHT_STREAM(18.0F, 0.75F, 1.15F, 0.80F, 0.55F, "Straight Stream"),
+	/** Medium cone — vegetation / structure cooling. */
+	NARROW_FOG(11.0F, 1.9F, 1.55F, 0.60F, 0.90F, "Narrow Fog"),
+	/** Short wide shield — wet lines and radiant protection. */
+	WIDE_FOG(6.0F, 3.2F, 1.75F, 0.40F, 1.20F, "Wide Fog");
 
 	/** Max block reach at full pressure. */
 	public final float range;

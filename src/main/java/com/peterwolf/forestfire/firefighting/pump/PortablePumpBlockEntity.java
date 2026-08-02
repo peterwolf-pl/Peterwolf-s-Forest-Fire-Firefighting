@@ -53,10 +53,17 @@ public class PortablePumpBlockEntity extends BlockEntity {
 		hasIntake = links.hasIntake;
 		hoseLength = links.outputLength;
 		// Prefer endpoint manager open-nozzle count for realistic multi-line load
-		int openNozzles = HoseNetwork.countConnectedNozzles(level, worldPosition);
+		int openNozzles = HoseNetwork.countOpenNozzlesForPump(level, worldPosition);
 		connectedNozzles = Math.max(links.activeNozzles, openNozzles);
 		intakeWater = links.availableWater;
 		hasStrainer = links.hasStrainer;
+
+		float intakeEff = 1.0F;
+		var autoIntake = com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager.get(level)
+			.scanIntake(level, worldPosition);
+		if (autoIntake.hasIntake()) {
+			intakeEff = Math.max(0.2F, autoIntake.efficiency());
+		}
 
 		if (state == PumpState.DAMAGED || state == PumpState.OFF) {
 			pressure = Math.max(0.0F, pressure - 0.05F);
@@ -105,7 +112,7 @@ public class PortablePumpBlockEntity extends BlockEntity {
 
 		// Open nozzles add load, but keep it gentle so continuous spray stays usable
 		float load = 1.0F + connectedNozzles * 0.18F + hoseLength * cfg.pressureLossPerSegment * 0.75F;
-		float targetPressure = cfg.basePumpPressure * efficiency / Math.max(0.55F, load * 0.55F);
+		float targetPressure = cfg.basePumpPressure * efficiency * intakeEff / Math.max(0.55F, load * 0.55F);
 		pressure = pressure * 0.80F + targetPressure * 0.20F;
 		// Slow thermal inertia — old values overheated in ~2 seconds of spraying
 		heat += load * 0.0015F;

@@ -7,6 +7,7 @@ import com.peterwolf.forestfire.firefighting.equipment.FirefighterRole;
 import com.peterwolf.forestfire.firefighting.nozzle.ModDataComponents;
 import com.peterwolf.forestfire.item.AirTankItem;
 import com.peterwolf.forestfire.item.BackpackSprayerItem;
+import com.peterwolf.forestfire.item.HoseRollItem;
 import com.peterwolf.forestfire.item.ModItems;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
@@ -114,11 +115,15 @@ public final class FirefighterCommands {
 			given++;
 		}
 
-		// Pump / hose / supply (deployable)
+		// Pump / hose / supply (deployable) — automatic hose system uses rolls + connector
 		given += give(inv, ModItems.PORTABLE_PUMP, 1);
 		given += give(inv, ModItems.HOSE_SPLITTER, 2);
-		given += give(inv, ModItems.FIRE_HOSE, 32);
-		given += give(inv, ModItems.INTAKE_HOSE, 16);
+		given += give(inv, ModItems.HOSE_CONNECTOR, 1);
+		given += give(inv, ModItems.HOSE_ANCHOR, 8);
+		given += giveHoseRoll(inv, ModItems.HOSE_ROLL_LARGE, 64);
+		given += giveHoseRoll(inv, ModItems.HOSE_ROLL_STANDARD, 32);
+		given += giveHoseRoll(inv, ModItems.HOSE_ROLL_SMALL, 16);
+		// Legacy segments still available for manual layouts
 		given += give(inv, ModItems.INTAKE_STRAINER, 1);
 		given += give(inv, ModItems.WATER_TANK_SMALL, 1);
 		given += give(inv, ModItems.WATER_TANK_MEDIUM, 1);
@@ -140,6 +145,17 @@ public final class FirefighterCommands {
 
 	private static int give(Inventory inv, Item item, int count) {
 		ItemStack stack = new ItemStack(item, count);
+		if (!inv.add(stack) && !stack.isEmpty()) {
+			inv.player.drop(stack, false);
+		}
+		return 1;
+	}
+
+	private static int giveHoseRoll(Inventory inv, Item item, int capacity) {
+		ItemStack stack = new ItemStack(item);
+		if (item instanceof HoseRollItem) {
+			HoseRollItem.setRemaining(stack, capacity);
+		}
 		if (!inv.add(stack) && !stack.isEmpty()) {
 			inv.player.drop(stack, false);
 		}

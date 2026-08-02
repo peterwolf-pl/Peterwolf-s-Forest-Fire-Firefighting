@@ -24,6 +24,12 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Optional soft dependency: Peterwolf's Planes (firefighting water bomber).
+	// Build planes first: `../peterwolfs-planes/gradlew jar`
+	// Use named configurations that Loom always provides.
+	compileOnly files("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
+	localRuntime files("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
 }
 
 sourceSets {
@@ -54,8 +60,17 @@ tasks.register('fireSpreadMathTest', JavaExec) {
 	mainClass = 'com.peterwolf.forestfire.fire.simulation.FireSpreadMathTest'
 }
 
+tasks.register('firefightingAircraftLogicTest', JavaExec) {
+	group = 'verification'
+	description = 'Runs firefighting aircraft tank/scoop/budget logic checks.'
+	dependsOn tasks.named(sourceSets.fireSpreadTest.classesTaskName)
+	classpath = sourceSets.fireSpreadTest.runtimeClasspath
+	mainClass = 'com.peterwolf.forestfire.fire.simulation.FirefightingAircraftLogicTest'
+}
+
 tasks.named('check') {
 	dependsOn tasks.named('fireSpreadMathTest')
+	dependsOn tasks.named('firefightingAircraftLogicTest')
 }
 
 java {

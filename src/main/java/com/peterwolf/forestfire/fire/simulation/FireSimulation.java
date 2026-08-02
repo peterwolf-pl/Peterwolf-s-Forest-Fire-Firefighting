@@ -294,18 +294,24 @@ public final class FireSimulation {
 					cell.addMoisture(cfg.waterMoistureGain * amount);
 					used += amount * 0.25F;
 
-					if ((cell.heat & 0xFF) < 20 && cell.stage().hasVisibleFlames()) {
+					// Faster flame knockdown under heavy water
+					if ((cell.heat & 0xFF) < 28 && cell.stage().hasVisibleFlames()) {
 						cell.setStage(BurnStage.SMOULDERING);
 					}
-					if ((cell.heat & 0xFF) < 8 && cell.moisture01() > 0.55F) {
-						if (cell.material().longBurn && (cell.fuel & 0xFF) > 15) {
+					if ((cell.heat & 0xFF) < 12 && cell.moisture01() > 0.45F) {
+						if (cell.material().longBurn && (cell.fuel & 0xFF) > 20 && cell.moisture01() < 0.72F) {
 							cell.setStage(BurnStage.REIGNITION_RISK);
-							cell.reignitionTimer = (short) (200 + level.getRandom().nextInt(400));
+							cell.reignitionTimer = (short) (160 + level.getRandom().nextInt(280));
 						} else {
 							cell.setStage(BurnStage.EXTINGUISHED);
 						}
 					}
-					if (cell.moisture01() > 0.7F) {
+					// Heavy soak always extinguishes non-deep fuels
+					if (cell.moisture01() > 0.82F && (cell.heat & 0xFF) < 40) {
+						cell.setStage(BurnStage.EXTINGUISHED);
+						cell.addHeat(-30);
+					}
+					if (cell.moisture01() > 0.6F) {
 						firebreaks.markWet(cursor.immutable(), cfg.wetnessDurationTicks);
 						if (!cell.stage().isBurning()) {
 							cell.setStage(BurnStage.WET);
