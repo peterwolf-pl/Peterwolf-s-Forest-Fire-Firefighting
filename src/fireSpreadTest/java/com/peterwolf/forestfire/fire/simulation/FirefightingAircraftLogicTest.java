@@ -59,10 +59,13 @@ public final class FirefightingAircraftLogicTest {
 	}
 
 	private static void testScoopAltitudeGate() {
-		double max = ForestFireConfig.get().firefightingAircraft.maximumWaterDistanceBlocks;
-		assertEq("default max water distance", 3.0, max);
-		assertTrue("in range", 2.5 <= max);
-		assertTrue("out of range", 3.5 > max);
+		double maxAbove = ForestFireConfig.get().firefightingAircraft.maximumWaterDistanceBlocks;
+		double maxSub = ForestFireConfig.get().firefightingAircraft.maximumNozzleSubmersionBlocks;
+		// Nozzle must be in/at water — not several blocks above
+		assertTrue("max above surface is tight", maxAbove <= 0.5);
+		assertTrue("allows submersion", maxSub >= 0.5);
+		assertTrue("in water", -0.5 >= -maxSub && -0.5 <= maxAbove);
+		assertTrue("too high", 1.0 > maxAbove);
 	}
 
 	private static void testHoseRetractedNoFill() {

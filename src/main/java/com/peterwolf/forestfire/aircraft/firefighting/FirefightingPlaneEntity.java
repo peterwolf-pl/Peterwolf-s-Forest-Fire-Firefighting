@@ -448,16 +448,17 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		}
 
 		WaterDropSimulator.get(server).recordCollectionCheck();
-		WaterProbe probe = this.probeWaterBelowNozzle(cfg.maximumWaterDistanceBlocks);
+		// Search far enough to find the surface; validity uses in-water rules below.
+		WaterProbe probe = this.probeWaterBelowNozzle(Math.max(8.0D, cfg.maximumNozzleSubmersionBlocks + 4.0D));
 		this.lastWaterDistance = probe.distance;
-		// Scoop still requires within configured vertical range (probe reports surface distance).
-		if (!probe.valid || probe.distance < 0.0D || probe.distance > cfg.maximumWaterDistanceBlocks) {
+		// distance = nozzleY - surfaceY: negative = submerged, positive = above water.
+		// Scoop only when the nozzle is in/at the water — not several blocks above.
+		boolean nozzleInWater = probe.valid
+			&& probe.distance <= cfg.maximumWaterDistanceBlocks
+			&& probe.distance >= -cfg.maximumNozzleSubmersionBlocks;
+		if (!nozzleInWater) {
 			this.notOverWaterTicks++;
 			this.setIntakeStatus(IntakeStatus.WATER_OUT_OF_RANGE);
-			if (this.notOverWaterTicks >= cfg.hoseNotOverWaterTimeoutTicks) {
-				// Auto-retract after sustained no-water
-				// keep hose out unless very long — only warn via status
-			}
 			return;
 		}
 
@@ -563,10 +564,11 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		Vec3 heading = this.calculateHeadingPublic(this.getYRot(), this.getXRot());
 		// Slight trail behind when moving
 		Vec3 vel = this.getDeltaMovement();
-		Vec3 trail = vel.lengthSqr() > 1.0E-4D ? vel.normalize().scale(-0.15D * progress) : Vec3.ZERO;
-		double extend = 0.4D + 2.4D * progress;
+		Vec3 trail = vel.lengthSqr() > 1.0E-4D ? vel.normalize().scale(-0.2D * progress) : Vec3.ZERO;
+		// Long probe — must be able to reach into water on a low pass
+		double extend = 0.55D + 3.2D * progress;
 		return this.position()
-			.add(heading.scale(-0.2D))
+			.add(heading.scale(0.15D))
 			.add(0.0D, -extend, 0.0D)
 			.add(trail);
 	}
@@ -599,15 +601,19 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 	 * Distance from the deployed hose nozzle to the water surface (blocks).
 	 * NaN if hose is stowed or no water in range of a long search.
 	 */
+	/**
+	 * Signed height of nozzle above water surface (blocks). Negative = submerged / in water.
+	 */
 	public double getNozzleAltitudeAboveWater() {
 		if (this.getHoseProgress() < 0.15F) {
 			return Double.NaN;
 		}
-		WaterProbe probe = this.probeWaterBelow(this.getHoseNozzlePosition(1.0F), 48.0D);
+		Vec3 nozzle = this.getHoseNozzlePosition(1.0F);
+		WaterProbe probe = this.probeWaterBelow(nozzle, 48.0D);
 		if (!probe.valid || Double.isNaN(probe.surfaceY())) {
 			return Double.NaN;
 		}
-		return Math.max(0.0D, this.getHoseNozzlePosition(1.0F).y - probe.surfaceY());
+		return nozzle.y - probe.surfaceY();
 	}
 
 	private WaterProbe probeWaterBelow(Vec3 from, double maxDistance) {

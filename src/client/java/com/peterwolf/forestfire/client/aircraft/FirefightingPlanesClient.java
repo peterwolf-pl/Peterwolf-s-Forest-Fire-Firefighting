@@ -150,9 +150,13 @@ public final class FirefightingPlanesClient {
 		}
 		double nozzleAgl = plane.getNozzleAltitudeAboveWater();
 		if (!Double.isNaN(nozzleAgl) && plane.isHoseDeployed()) {
-			waterAlt = String.format("WATER AGL: %.1f m  NOZZLE: %.1f m", waterAgl, nozzleAgl);
-			if (nozzleAgl <= 3.0D) {
+			// Positive = above surface; negative / ~0 = in water (scooping)
+			if (nozzleAgl <= 0.15D) {
+				waterAlt = String.format("WATER AGL: %.1f m  NOZZLE: IN WATER (%.2f)", waterAgl, nozzleAgl);
 				waterAltColor = 0xFF55FFFF;
+			} else {
+				waterAlt = String.format("WATER AGL: %.1f m  NOZZLE: %.2f m ABOVE", waterAgl, nozzleAgl);
+				waterAltColor = 0xFFFF8855;
 			}
 		}
 
@@ -203,7 +207,7 @@ public final class FirefightingPlanesClient {
 			return "DROP SYSTEM OFF";
 		}
 		return switch (plane.getIntakeStatus()) {
-			case WATER_OUT_OF_RANGE -> "TOO HIGH ABOVE WATER";
+			case WATER_OUT_OF_RANGE -> "NOZZLE MUST BE IN WATER";
 			case TOO_SLOW -> "SPEED TOO LOW";
 			case TOO_FAST -> "SPEED TOO HIGH";
 			case EXCESSIVE_BANK -> "EXCESSIVE BANK ANGLE";

@@ -224,7 +224,13 @@ public final class ForestFireConfig {
 			public int waterIntakeRatePerTick = 30;
 			/** Units drained per tick while holding B (12000 capacity ≈ 2.7s at 220). */
 			public int waterReleaseRatePerTick = 220;
-			public double maximumWaterDistanceBlocks = 3.0;
+			/**
+			 * Max nozzle height above water surface (blocks). Default 0.15 — scoop must be
+			 * in/at the water, not flying several blocks above it.
+			 */
+			public double maximumWaterDistanceBlocks = 0.15;
+			/** How deep the nozzle may go below the surface and still scoop (blocks). */
+			public double maximumNozzleSubmersionBlocks = 1.25;
 			/** Horizontal speed (blocks/tick) — matches Planes physics units. */
 			public double minimumScoopingSpeed = 0.25;
 			public double maximumScoopingSpeed = 0.85;
@@ -251,7 +257,8 @@ public final class ForestFireConfig {
 				tankCapacity = Math.max(100, Math.min(500_000, tankCapacity));
 				waterIntakeRatePerTick = Math.max(1, Math.min(5000, waterIntakeRatePerTick));
 				waterReleaseRatePerTick = Math.max(1, Math.min(10000, waterReleaseRatePerTick));
-				maximumWaterDistanceBlocks = clampD(maximumWaterDistanceBlocks, 0.5, 16.0);
+				maximumWaterDistanceBlocks = clampD(maximumWaterDistanceBlocks, 0.0, 4.0);
+				maximumNozzleSubmersionBlocks = clampD(maximumNozzleSubmersionBlocks, 0.25, 4.0);
 				minimumScoopingSpeed = clampD(minimumScoopingSpeed, 0.0, 2.0);
 				maximumScoopingSpeed = clampD(maximumScoopingSpeed, minimumScoopingSpeed, 4.0);
 				maximumScoopingRollDegrees = clamp(maximumScoopingRollDegrees, 5.0F, 80.0F);
