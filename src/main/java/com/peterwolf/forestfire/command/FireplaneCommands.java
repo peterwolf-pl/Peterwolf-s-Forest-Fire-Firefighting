@@ -95,17 +95,19 @@ public final class FireplaneCommands {
 		var probe = plane.probeWaterBelowNozzle(
 			com.peterwolf.forestfire.config.ForestFireConfig.get().firefightingAircraft.maximumWaterDistanceBlocks
 		);
-		double speed = plane.getDeltaMovement().horizontalDistance();
+		double speed = plane.scoopingSpeed();
+		double rawVel = plane.getDeltaMovement().horizontalDistance();
 		String sim = source.getLevel() instanceof ServerLevel level
 			? WaterDropSimulator.get(level).debugSummary()
 			: "n/a";
 		source.sendSuccess(() -> Component.literal(String.format(
-			"debug=%s nozzle=(%.1f,%.1f,%.1f) waterDist=%.2f valid=%s speed=%.3f pitch=%.1f roll=%.1f tank=%d status=%s sim[%s]",
+			"debug=%s nozzle=(%.1f,%.1f,%.1f) waterDist=%.2f valid=%s scoopSpeed=%.3f rawVel=%.3f pitch=%.1f roll=%.1f tank=%d status=%s sim[%s]",
 			on,
 			nozzle.x, nozzle.y, nozzle.z,
 			probe.distance(),
 			probe.valid(),
 			speed,
+			rawVel,
 			plane.getXRot(),
 			plane.getRoll(),
 			plane.getWaterAmount(),

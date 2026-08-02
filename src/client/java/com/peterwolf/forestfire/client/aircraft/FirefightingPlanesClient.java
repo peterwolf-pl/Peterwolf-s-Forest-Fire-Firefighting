@@ -53,6 +53,8 @@ public final class FirefightingPlanesClient {
 	));
 
 	private static boolean lastReleaseDown;
+	/** Edge-guard so a single physical key press cannot toggle hose twice in one tick. */
+	private static int hoseToggleCooldown;
 
 	private FirefightingPlanesClient() {
 	}
@@ -64,13 +66,24 @@ public final class FirefightingPlanesClient {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.player == null || !(client.player.getVehicle() instanceof FirefightingPlaneEntity plane)) {
 				lastReleaseDown = false;
+				hoseToggleCooldown = 0;
 				return;
+			}
+
+			if (hoseToggleCooldown > 0) {
+				hoseToggleCooldown--;
 			}
 
 			while (TOGGLE_DROP.consumeClick()) {
 				ClientPlayNetworking.send(new FireplaneActionPayload(FireplaneActionPayload.TOGGLE_DROP_ARMED, true));
 			}
+			// Aircraft scoop hose only (not ground automatic hose). One packet per press.
+			boolean hoseClicked = false;
 			while (TOGGLE_HOSE.consumeClick()) {
+				hoseClicked = true;
+			}
+			if (hoseClicked && hoseToggleCooldown <= 0) {
+				hoseToggleCooldown = 4;
 				ClientPlayNetworking.send(new FireplaneActionPayload(FireplaneActionPayload.TOGGLE_HOSE, true));
 			}
 

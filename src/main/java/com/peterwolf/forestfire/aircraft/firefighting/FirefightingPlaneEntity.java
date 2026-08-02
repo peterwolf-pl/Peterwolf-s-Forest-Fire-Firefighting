@@ -73,6 +73,14 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 	private float clientHoseProgress;
 	private float clientDoorProgress;
 
+	/**
+	 * Planes is client-authoritative while piloted: server {@code getDeltaMovement()} is often ~0.
+	 * Scooping speed is measured from position deltas so server-side fill still works.
+	 */
+	@Nullable
+	private Vec3 previousTickPosition;
+	private double measuredHorizontalSpeed;
+
 	public FirefightingPlaneEntity(EntityType<? extends LargePlaneEntity> type, Level world) {
 		super(type, world);
 	}
@@ -309,6 +317,7 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		this.clientHoseProgress = this.getHoseProgress();
 		this.clientDoorProgress = this.getDoorProgress();
 		super.tick();
+		this.updateMeasuredSpeed();
 
 		if (this.actionCooldown > 0) {
 			this.actionCooldown--;
@@ -376,9 +385,10 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		if (!this.isHoseDeployed()) {
 			return;
 		}
-		boolean land = this.onGround();
+		// Require both onGround and nearly stopped — sticky onGround near water must not yank the hose.
+		boolean land = this.onGround() && this.scoopingSpeed() < 0.08D;
 		boolean noPilot = !(this.getFirstPassenger() instanceof Player);
-		double speed = this.getDeltaMovement().horizontalDistance();
+		double speed = this.scoopingSpeed();
 		boolean tooFast = cfg.autoRetractHoseAtUnsafeSpeed && speed > cfg.autoRetractSpeed;
 		if (land || noPilot || tooFast || this.isRemoved()) {
 			this.setHoseDeployed(false);
@@ -401,7 +411,8 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 			return;
 		}
 
-		if (this.onGround()) {
+		// Only treat as landed when stopped on solid ground (not low-altitude scooping).
+		if (this.onGround() && this.scoopingSpeed() < 0.08D) {
 			this.setIntakeStatus(IntakeStatus.NOT_AIRBORNE);
 			return;
 		}
@@ -411,16 +422,16 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 			return;
 		}
 
-		double forwardSpeed = this.forwardSpeed();
-		if (forwardSpeed < 0.05D) {
+		double speed = this.scoopingSpeed();
+		if (speed < 0.05D) {
 			this.setIntakeStatus(IntakeStatus.NO_FORWARD_SPEED);
 			return;
 		}
-		if (forwardSpeed < cfg.minimumScoopingSpeed) {
+		if (speed < cfg.minimumScoopingSpeed) {
 			this.setIntakeStatus(IntakeStatus.TOO_SLOW);
 			return;
 		}
-		if (forwardSpeed > cfg.maximumScoopingSpeed) {
+		if (speed > cfg.maximumScoopingSpeed) {
 			this.setIntakeStatus(IntakeStatus.TOO_FAST);
 			return;
 		}
@@ -514,9 +525,23 @@ public class FirefightingPlaneEntity extends LargePlaneEntity
 		}
 	}
 
-	private double forwardSpeed() {
-		Vec3 heading = this.calculateHeadingPublic(this.getYRot(), this.getXRot());
-		return Math.max(0.0D, this.getDeltaMovement().dot(heading));
+	private void updateMeasuredSpeed() {
+		Vec3 pos = this.position();
+		if (this.previousTickPosition != null) {
+			// Smooth slightly so single-tick network teleport spikes do not flip scoop states.
+			double sample = pos.subtract(this.previousTickPosition).horizontalDistance();
+			this.measuredHorizontalSpeed = this.measuredHorizontalSpeed * 0.35D + sample * 0.65D;
+		}
+		this.previousTickPosition = pos;
+	}
+
+	/**
+	 * Best-effort horizontal speed (blocks/tick) for scooping gates.
+	 * Prefer live velocity when present; fall back to measured position delta (server + client-auth planes).
+	 */
+	public double scoopingSpeed() {
+		double fromVelocity = this.getDeltaMovement().horizontalDistance();
+		return Math.max(fromVelocity, this.measuredHorizontalSpeed);
 	}
 
 	/** Public wrapper — heading is private on base; recompute locally. */
