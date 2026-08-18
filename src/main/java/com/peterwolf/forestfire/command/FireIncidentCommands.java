@@ -165,15 +165,17 @@ public final class FireIncidentCommands {
 		} else {
 			center = BlockPos.containing(ctx.getSource().getPosition());
 		}
-		int count = FireSimulation.get(level).extinguishInRadius(center, radius);
+		FireSimulation.DouseResult result = FireSimulation.get(level).extinguishInRadius(center, radius);
 		IncidentManager.get(level).markDirty();
 		final int r = radius;
-		final int n = count;
+		final int n = result.cells();
+		final int sparks = result.sparks();
 		ctx.getSource().sendSuccess(() -> Component.literal(
 			"Doused fire in radius " + r + " around " + center.toShortString()
-				+ " — extinguished " + n + " fire cell(s) (+ vanilla fire blocks)."
+				+ " — extinguished " + n + " fire cell(s) (+ vanilla fire blocks)"
+				+ " and " + sparks + " airborne spark(s)."
 		), true);
-		return Math.max(1, count);
+		return Math.max(1, n + sparks);
 	}
 
 	private static int remove(CommandContext<CommandSourceStack> ctx) {

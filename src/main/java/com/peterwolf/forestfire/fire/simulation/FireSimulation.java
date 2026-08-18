@@ -344,6 +344,7 @@ public final class FireSimulation {
 				it.remove();
 			}
 		}
+		embers.clearIncident(incidentId);
 		recountActiveCells();
 	}
 
@@ -356,14 +357,23 @@ public final class FireSimulation {
 				cell.reignitionTimer = 0;
 			}
 		}
+		embers.clearIncident(incidentId);
 		recountActiveCells();
 	}
 
+	public void clearAllSparks() {
+		embers.clearAll();
+	}
+
+	public record DouseResult(int cells, int sparks) {
+	}
+
 	/**
-	 * Admin douse: extinguish simulation cells and remove vanilla fire in a sphere around {@code center}.
-	 * @return number of fire cells extinguished
+	 * Admin douse: extinguish simulation cells, remove vanilla fire, and drop
+	 * airborne sparks that originated in, are flying through, or would land in
+	 * the sphere around {@code center}.
 	 */
-	public int extinguishInRadius(BlockPos center, int radius) {
+	public DouseResult extinguishInRadius(BlockPos center, int radius) {
 		int r = Math.max(0, radius);
 		int r2 = r * r;
 		int extinguished = 0;
@@ -413,7 +423,8 @@ public final class FireSimulation {
 			}
 		}
 		recountActiveCells();
-		return extinguished;
+		int sparks = embers.douseInRadius(center, r);
+		return new DouseResult(extinguished, sparks);
 	}
 
 	public void updateIncidentStats(FireIncident incident) {

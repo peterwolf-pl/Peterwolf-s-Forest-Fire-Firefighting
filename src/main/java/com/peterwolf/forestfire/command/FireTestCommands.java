@@ -50,7 +50,9 @@ public final class FireTestCommands {
 					for (FireIncident incident : manager.openIncidents().toArray(FireIncident[]::new)) {
 						manager.remove(incident.id);
 					}
-					FireSimulation.get(level).cells().clear();
+					FireSimulation simulation = FireSimulation.get(level);
+					simulation.cells().clear();
+					simulation.clearAllSparks();
 					manager.markDirty();
 					ctx.getSource().sendSuccess(() -> Component.literal("Cleared all fire simulation data."), true);
 					return 1;

@@ -125,6 +125,50 @@ public final class EmberSystem {
 		return spawn(level, origin, wind, wind.speed(), incidentId, cfg, 0.7F, 0.5F, FuelMaterial.DRY_LEAVES);
 	}
 
+	/**
+	 * Remove airborne sparks whose origin, current flight position or landing
+	 * target sits inside {@code radius} of {@code center}. Prevents a doused
+	 * patch from immediately re-igniting when leftover fragments land.
+	 */
+	public int douseInRadius(BlockPos center, int radius) {
+		if (sparks.isEmpty() || radius < 0) {
+			return 0;
+		}
+		int r2 = radius * radius;
+		int removed = 0;
+		Iterator<Spark> it = sparks.iterator();
+		while (it.hasNext()) {
+			Spark spark = it.next();
+			if (inRadius(spark.ox, spark.oy, spark.oz, center, r2)
+				|| inRadius(spark.tx, spark.ty, spark.tz, center, r2)
+				|| inRadius(currentX(spark), currentY(spark), currentZ(spark), center, r2)) {
+				it.remove();
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	public int clearIncident(int incidentId) {
+		int removed = 0;
+		Iterator<Spark> it = sparks.iterator();
+		while (it.hasNext()) {
+			if (it.next().incidentId == incidentId) {
+				it.remove();
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	public void clearAll() {
+		sparks.clear();
+	}
+
+	public int size() {
+		return sparks.size();
+	}
+
 	public void tick(ServerLevel level, FireSimulation simulation, ForestFireConfig.Data cfg) {
 		if (!cfg.sparksEnabled || sparks.isEmpty()) {
 			sparks.clear();
@@ -203,6 +247,31 @@ public final class EmberSystem {
 				}
 			}
 		}
+	}
+
+	private static double currentT(Spark spark) {
+		return 1.0D - (spark.life / (double)Math.max(1, spark.maxLife));
+	}
+
+	private static double currentX(Spark spark) {
+		return Mth.lerp(currentT(spark), spark.ox, spark.tx);
+	}
+
+	private static double currentZ(Spark spark) {
+		return Mth.lerp(currentT(spark), spark.oz, spark.tz);
+	}
+
+	private static double currentY(Spark spark) {
+		double t = currentT(spark);
+		double baseY = Mth.lerp(t, spark.oy, spark.ty);
+		return baseY + (4.0D * t * (1.0D - t)) * spark.arcHeight;
+	}
+
+	private static boolean inRadius(double x, double y, double z, BlockPos center, int r2) {
+		double dx = x - (center.getX() + 0.5D);
+		double dy = y - (center.getY() + 0.5D);
+		double dz = z - (center.getZ() + 0.5D);
+		return dx * dx + dy * dy + dz * dz <= r2;
 	}
 
 	private static BlockPos findLandingFuel(

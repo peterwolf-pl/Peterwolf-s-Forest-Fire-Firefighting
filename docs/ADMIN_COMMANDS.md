@@ -22,7 +22,7 @@ All mutating `/fireincident`, `/firetest`, and `/wind` commands require
 - `create` — ignites a wildfire and opens an incident (names like *Pine Ridge Fire*)
 - `contain` / `control` / `close` — status transitions and scoring
 - `extinguish` — forces all cells for that incident out
-- `douse [radius]` — extinguish fire in a sphere around the player (default 16, max 128)
+- `douse [radius]` — extinguish fire and airborne sparks in a sphere around the player (default 16, max 128)
 - `remove` — deletes incident and its cells
 
 ### Local douse (around player)
@@ -34,7 +34,7 @@ All mutating `/fireincident`, `/firetest`, and `/wind` commands require
 /gaspozaru 24
 ```
 
-Removes simulation heat/flames and vanilla fire blocks within radius blocks of the player.
+Removes simulation heat/flames, vanilla fire blocks, and airborne sparks (origin, flight path or landing inside the sphere) within radius blocks of the player. Leftover sparks will not land and restart the fire.
 
 ## Fire danger
 

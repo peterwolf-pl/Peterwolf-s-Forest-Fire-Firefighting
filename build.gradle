@@ -22,7 +22,7 @@ loom {
 
 // Optional soft dependency: Peterwolf's Planes (firefighting water bomber).
 // Build planes first: `../peterwolfs-planes/gradlew jar`
-def planesJar = file("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.7.jar")
+def planesJar = file("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.15.jar")
 def hasPlanesApi = planesJar.exists()
 
 dependencies {
