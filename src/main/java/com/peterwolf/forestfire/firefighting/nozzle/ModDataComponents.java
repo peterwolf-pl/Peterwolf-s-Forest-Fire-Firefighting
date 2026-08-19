@@ -15,6 +15,10 @@ public final class ModDataComponents {
 	public static final DataComponentType<Integer> NOZZLE_MODE = register("nozzle_mode",
 		builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
+	/** Stable hose endpoint UUID string; empty/null = disconnected free nozzle. */
+	public static final DataComponentType<String> NOZZLE_ENDPOINT_ID = register("nozzle_endpoint_id",
+		builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
 	public static final DataComponentType<Integer> WATER_AMOUNT = register("water_amount",
 		builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
@@ -22,6 +26,18 @@ public final class ModDataComponents {
 		builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
 	public static final DataComponentType<String> FIREFIGHTER_ROLE = register("firefighter_role",
+		builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+	/** Remaining blocks on a hose roll. */
+	public static final DataComponentType<Integer> HOSE_REMAINING = register("hose_remaining",
+		builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
+
+	/** Pending pump BlockPos as long for hose connector tool. */
+	public static final DataComponentType<Long> CONNECTOR_PUMP_POS = register("connector_pump_pos",
+		builder -> builder.persistent(Codec.LONG).networkSynchronized(ByteBufCodecs.VAR_LONG));
+
+	/** INTAKE or OUTPUT for hose connector. */
+	public static final DataComponentType<String> CONNECTOR_MODE = register("connector_mode",
 		builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
 
 	private ModDataComponents() {

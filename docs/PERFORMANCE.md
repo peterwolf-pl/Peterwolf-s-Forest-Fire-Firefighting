@@ -7,7 +7,7 @@ Wildfires can be expensive. This mod uses:
 - Spread/ember budgets per tick
 - No persistent smoke entities (particles only)
 - Hose networks as blocks + BFS, not per-segment entities
-- Chunk-aware skipping of unloaded cells
+- Temporary, bounded chunk tickets around the active fire front
 
 ## Recommended dedicated-server settings
 
@@ -18,7 +18,9 @@ Small community server:
 "fireTickInterval": 5,
 "maxSpreadChecksPerTick": 250,
 "maxEmbersPerTick": 4,
-"maxActiveIncidents": 4
+"maxActiveIncidents": 4,
+"chunkUnloadRetentionRadius": 1,
+"maxFireChunkTickets": 64
 ```
 
 Event / training server:
@@ -27,7 +29,9 @@ Event / training server:
 "maxBurningBlocksPerWorld": 8000,
 "fireTickInterval": 4,
 "maxSpreadChecksPerTick": 400,
-"maxEmbersPerTick": 8
+"maxEmbersPerTick": 12,
+"chunkUnloadRetentionRadius": 2,
+"maxFireChunkTickets": 128
 ```
 
 ## Profiling
@@ -40,5 +44,7 @@ Event / training server:
 ## Tips
 
 - Prefer several medium incidents over one unbounded mega-fire
+- Lower `chunkUnloadRetentionRadius` or `maxFireChunkTickets` if chunk loading,
+  rather than fire calculations, becomes the server bottleneck
 - Peat fire stays **disabled** by default
 - Lower `maxSmokeParticles` on low-end clients (client particle load)

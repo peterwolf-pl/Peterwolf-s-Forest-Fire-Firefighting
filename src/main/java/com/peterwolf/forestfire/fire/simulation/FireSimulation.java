@@ -6,14 +6,19 @@ import com.peterwolf.forestfire.fire.incident.IncidentManager;
 import com.peterwolf.forestfire.fire.incident.IncidentStatus;
 import com.peterwolf.forestfire.fire.spread.EmberSystem;
 import com.peterwolf.forestfire.fire.weather.FireDangerLevel;
+import com.peterwolf.forestfire.fire.weather.FirestormState;
 import com.peterwolf.forestfire.fire.weather.WeatherFireModel;
 import com.peterwolf.forestfire.fire.weather.WindSystem;
+import com.peterwolf.forestfire.world.FireChunkTickets;
 import com.peterwolf.forestfire.world.FirebreakTracker;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -24,6 +29,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -34,14 +40,24 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public final class FireSimulation {
 	private static final Map<ServerLevel, FireSimulation> CACHE = new HashMap<>();
-	private static final Direction[] HORIZONTAL = {Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 	private static final Direction[] NEIGHBOURS = Direction.values();
+	private static final int[][] HORIZONTAL_OFFSETS = {
+		{-1, -1}, {0, -1}, {1, -1},
+		{-1, 0},            {1, 0},
+		{-1, 1},  {0, 1},   {1, 1}
+	};
+	private static final int[] HEIGHT_SEARCH = {0, 1, -1, 2, -2};
 
 	private final ServerLevel level;
 	private final Map<Long, FireCell> cells = new ConcurrentHashMap<>();
 	private final EmberSystem embers = new EmberSystem();
 	private final FirebreakTracker firebreaks = new FirebreakTracker();
+	/** Ticket centre -> radius used when the ticket was added. */
+	private final Map<Long, Integer> activeFireChunkTickets = new HashMap<>();
 	private int tickCounter;
+	private int activeCellCount;
+	/** Cached each fire sim tick — large fires run hot and drive wind. */
+	private FirestormState firestorm = FirestormState.INACTIVE;
 
 	private FireSimulation(ServerLevel level) {
 		this.level = level;
@@ -52,10 +68,16 @@ public final class FireSimulation {
 	}
 
 	public static void invalidate(ServerLevel level) {
-		CACHE.remove(level);
+		FireSimulation simulation = CACHE.remove(level);
+		if (simulation != null) {
+			simulation.releaseChunkTickets();
+		}
 	}
 
 	public static void clearAll() {
+		for (FireSimulation simulation : CACHE.values()) {
+			simulation.releaseChunkTickets();
+		}
 		CACHE.clear();
 	}
 
@@ -67,12 +89,36 @@ public final class FireSimulation {
 		return cells;
 	}
 
+	public int activeFireChunkTicketCount() {
+		return activeFireChunkTickets.size();
+	}
+
+	public int activeCellCount() {
+		return activeCellCount;
+	}
+
 	public FireCell getCell(BlockPos pos) {
 		return cells.get(pos.asLong());
 	}
 
 	public FireCell getOrCreate(BlockPos pos, FuelMaterial material, int incidentId) {
-		return cells.computeIfAbsent(pos.asLong(), key -> new FireCell(material, incidentId));
+		long key = pos.asLong();
+		FireCell existing = cells.get(key);
+		if (existing != null) {
+			return existing;
+		}
+		FireCell created = cells.computeIfAbsent(key, ignored -> {
+			FireCell cell = new FireCell(material, incidentId);
+			float initialMoisture = WeatherFireModel.initialFuelMoisture01(
+				level,
+				pos,
+				material.baseMoisture
+			);
+			cell.setMoisture(Math.round(initialMoisture * 100.0F));
+			return cell;
+		});
+		activeCellCount++;
+		return created;
 	}
 
 	public void loadCells(List<FireCellRecord> records) {
@@ -80,6 +126,7 @@ public final class FireSimulation {
 		for (FireCellRecord record : records) {
 			cells.put(record.pos().asLong(), record.toCell());
 		}
+		recountActiveCells();
 	}
 
 	public List<FireCellRecord> exportCells() {
@@ -91,13 +138,13 @@ public final class FireSimulation {
 	}
 
 	/**
-	 * Start a wildfire disk. Scans full vegetation columns (heightmap) so forest
-	 * fires catch leaves, trunks and undergrowth — not only the player's Y band.
+	 * Start a wildfire at the lowest exposed fuel in each column. Canopy and upper
+	 * trunks are deliberately not force-lit; convection and ladder fuels must carry
+	 * a surface fire upward.
 	 */
 	public int igniteArea(BlockPos center, int radius, int incidentId) {
 		int count = 0;
 		int r = Math.max(1, radius);
-		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 		for (int dx = -r; dx <= r; dx++) {
 			for (int dz = -r; dz <= r; dz++) {
 				if (dx * dx + dz * dz > r * r) {
@@ -109,31 +156,53 @@ public final class FireSimulation {
 				if (!level.isLoaded(columnBase)) {
 					continue;
 				}
-				int surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z);
-				// Column: ground litter up through canopy
-				int yMin = Math.min(center.getY() - 4, surface - 2);
-				int yMax = Math.max(center.getY() + 18, surface + 12);
-				for (int y = yMin; y <= yMax; y++) {
-					cursor.set(x, y, z);
-					if (tryIgnite(cursor.immutable(), incidentId, 70 + level.getRandom().nextInt(25), true)) {
-						count++;
-					}
+				BlockPos fuel = findLowestIgnitionFuel(x, z, center.getY());
+				if (fuel != null
+					&& tryIgnite(fuel, incidentId, 70 + level.getRandom().nextInt(25), true)) {
+					count++;
 				}
 			}
 		}
-		// Guarantee a core of active flame even if the area looked empty of fuel
+
+		// Guarantee a core attempt for sparse terrain without igniting air.
 		if (count == 0) {
-			for (int dy = -1; dy <= 8; dy++) {
-				if (tryIgnite(center.above(dy), incidentId, 90, true)) {
-					count++;
-				}
+			BlockPos fuel = findLowestIgnitionFuel(center.getX(), center.getZ(), center.getY());
+			if (fuel != null && tryIgnite(fuel, incidentId, 90, true)) {
+				count++;
 			}
 		}
 		return count;
 	}
 
+	private BlockPos findLowestIgnitionFuel(int x, int z, int referenceY) {
+		BlockPos column = new BlockPos(x, referenceY, z);
+		if (!level.isLoaded(column)) {
+			return null;
+		}
+		int top = level.getHeight(
+			net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+			x,
+			z
+		);
+		int yMin = Math.min(referenceY - 3, top - 24);
+		int yMax = Math.max(referenceY + 5, top);
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos(x, yMin, z);
+		for (int y = yMin; y <= yMax; y++) {
+			cursor.setY(y);
+			FuelMaterial material = FuelMaterial.of(level.getBlockState(cursor));
+			if (isSpreadFuel(material)) {
+				return cursor.immutable();
+			}
+		}
+		return null;
+	}
+
 	public boolean tryIgnite(BlockPos pos, int incidentId, int heat, boolean force) {
-		if (cells.size() >= ForestFireConfig.get().maxBurningBlocksPerWorld && !cells.containsKey(pos.asLong())) {
+		FireCell tracked = cells.get(pos.asLong());
+		boolean needsActiveSlot = tracked == null
+			|| tracked.stage() == BurnStage.CHARRED
+			|| tracked.stage() == BurnStage.EXTINGUISHED;
+		if (activeCellCount >= ForestFireConfig.get().maxBurningBlocksPerWorld && needsActiveSlot) {
 			return false;
 		}
 		if (!level.isLoaded(pos)) {
@@ -141,6 +210,10 @@ public final class FireSimulation {
 		}
 		BlockState state = level.getBlockState(pos);
 		FuelMaterial material = FuelMaterial.of(state);
+		ForestFireConfig.Data cfg = ForestFireConfig.get();
+		if (material == FuelMaterial.PEAT && !cfg.peatFireEnabled) {
+			return false;
+		}
 		if (!material.flammable()) {
 			// Vanilla fire block: convert underlying fuel if present
 			if (state.is(Blocks.FIRE) || state.is(Blocks.SOUL_FIRE)) {
@@ -157,6 +230,7 @@ public final class FireSimulation {
 			return false;
 		}
 		FireCell cell = getOrCreate(pos, material, incidentId);
+		boolean wasTerminal = cell.stage() == BurnStage.CHARRED || cell.stage() == BurnStage.EXTINGUISHED;
 		if (cell.stage() == BurnStage.WET && cell.moisture01() > 0.55F && !force) {
 			return false;
 		}
@@ -164,7 +238,7 @@ public final class FireSimulation {
 		cell.addHeat(heat);
 		// Refresh fuel if the cell was nearly spent but is being re-ignited by an incident
 		if (force && (cell.fuel & 0xFF) < material.initialFuelPercent() / 2) {
-			cell.fuel = (byte) material.initialFuelPercent();
+			cell.setFuel(material.initialFuelPercent());
 		}
 		if (cell.stage() == BurnStage.UNBURNED || cell.stage() == BurnStage.WET || cell.stage() == BurnStage.EXTINGUISHED
 			|| cell.stage() == BurnStage.CHARRED) {
@@ -172,13 +246,18 @@ public final class FireSimulation {
 		}
 		if (force) {
 			// Admin / incident ignition: skip the slow HEATING wait and go straight to flames
-			cell.moisture = (byte) Math.min(cell.moisture & 0xFF, 20);
-			cell.heat = (byte) Math.max(cell.heat & 0xFF, 75);
-			cell.setStage(BurnStage.FLAMING);
+			cell.setMoisture(Math.min(cell.moisture & 0xFF, 20));
+			cell.setHeat(Math.max(cell.heat & 0xFF, 75));
+			if (!cell.stage().hasVisibleFlames()) {
+				cell.setStage(BurnStage.FLAMING);
+			}
 			ensureFireVisual(pos);
-		} else if (cell.heat01() > 0.35F * (1.0F + cell.moisture01())) {
+		} else if ((cell.heat & 0xFF) >= FireSpreadMath.ignitionThreshold(material.igniteEase, cell.moisture01())) {
 			cell.setStage(BurnStage.IGNITED);
-			cell.heat = (byte) Math.max(cell.heat & 0xFF, 50);
+			cell.setHeat(Math.max(cell.heat & 0xFF, 50));
+		}
+		if (wasTerminal && cell.stage() != BurnStage.CHARRED && cell.stage() != BurnStage.EXTINGUISHED) {
+			activeCellCount++;
 		}
 		return true;
 	}
@@ -201,7 +280,8 @@ public final class FireSimulation {
 					FireCell cell = cells.get(cursor.asLong());
 					BlockState state = level.getBlockState(cursor);
 					FuelMaterial material = FuelMaterial.of(state);
-					if (cell == null && material.flammable()) {
+					if (cell == null && material.flammable()
+						&& activeCellCount < cfg.maxBurningBlocksPerWorld) {
 						cell = getOrCreate(cursor.immutable(), material, 0);
 					}
 					if (cell == null) {
@@ -214,18 +294,24 @@ public final class FireSimulation {
 					cell.addMoisture(cfg.waterMoistureGain * amount);
 					used += amount * 0.25F;
 
-					if ((cell.heat & 0xFF) < 20 && cell.stage().hasVisibleFlames()) {
+					// Faster flame knockdown under heavy water
+					if ((cell.heat & 0xFF) < 28 && cell.stage().hasVisibleFlames()) {
 						cell.setStage(BurnStage.SMOULDERING);
 					}
-					if ((cell.heat & 0xFF) < 8 && cell.moisture01() > 0.55F) {
-						if (cell.material().longBurn && (cell.fuel & 0xFF) > 15) {
+					if ((cell.heat & 0xFF) < 12 && cell.moisture01() > 0.45F) {
+						if (cell.material().longBurn && (cell.fuel & 0xFF) > 20 && cell.moisture01() < 0.72F) {
 							cell.setStage(BurnStage.REIGNITION_RISK);
-							cell.reignitionTimer = (short) (200 + level.getRandom().nextInt(400));
+							cell.reignitionTimer = (short) (160 + level.getRandom().nextInt(280));
 						} else {
 							cell.setStage(BurnStage.EXTINGUISHED);
 						}
 					}
-					if (cell.moisture01() > 0.7F) {
+					// Heavy soak always extinguishes non-deep fuels
+					if (cell.moisture01() > 0.82F && (cell.heat & 0xFF) < 40) {
+						cell.setStage(BurnStage.EXTINGUISHED);
+						cell.addHeat(-30);
+					}
+					if (cell.moisture01() > 0.6F) {
 						firebreaks.markWet(cursor.immutable(), cfg.wetnessDurationTicks);
 						if (!cell.stage().isBurning()) {
 							cell.setStage(BurnStage.WET);
@@ -258,17 +344,87 @@ public final class FireSimulation {
 				it.remove();
 			}
 		}
+		embers.clearIncident(incidentId);
+		recountActiveCells();
 	}
 
 	public void extinguishIncident(int incidentId) {
 		for (FireCell cell : cells.values()) {
 			if (cell.incidentId == incidentId) {
-				cell.heat = 0;
+				cell.setHeat(0);
 				cell.addMoisture(40);
 				cell.setStage(BurnStage.EXTINGUISHED);
 				cell.reignitionTimer = 0;
 			}
 		}
+		embers.clearIncident(incidentId);
+		recountActiveCells();
+	}
+
+	public void clearAllSparks() {
+		embers.clearAll();
+	}
+
+	public record DouseResult(int cells, int sparks) {
+	}
+
+	/**
+	 * Admin douse: extinguish simulation cells, remove vanilla fire, and drop
+	 * airborne sparks that originated in, are flying through, or would land in
+	 * the sphere around {@code center}.
+	 */
+	public DouseResult extinguishInRadius(BlockPos center, int radius) {
+		int r = Math.max(0, radius);
+		int r2 = r * r;
+		int extinguished = 0;
+		Iterator<Map.Entry<Long, FireCell>> it = cells.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<Long, FireCell> entry = it.next();
+			BlockPos pos = BlockPos.of(entry.getKey());
+			int dx = pos.getX() - center.getX();
+			int dy = pos.getY() - center.getY();
+			int dz = pos.getZ() - center.getZ();
+			if (dx * dx + dy * dy + dz * dz > r2) {
+				continue;
+			}
+			FireCell cell = entry.getValue();
+			if (cell.stage().isBurning() || cell.stage().hasVisibleFlames()
+				|| cell.stage() == BurnStage.REIGNITION_RISK
+				|| cell.stage() == BurnStage.HEATING
+				|| cell.stage() == BurnStage.IGNITED
+				|| (cell.heat & 0xFF) > 0) {
+				extinguished++;
+			}
+			cell.setHeat(0);
+			cell.addMoisture(60);
+			cell.setStage(BurnStage.EXTINGUISHED);
+			cell.reignitionTimer = 0;
+			clearFireVisual(pos);
+			if (level.getBlockState(pos).is(Blocks.FIRE) || level.getBlockState(pos).is(Blocks.SOUL_FIRE)) {
+				level.removeBlock(pos, false);
+			}
+		}
+		// Also clear vanilla fire even without sim cells
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+		for (int dx = -r; dx <= r; dx++) {
+			for (int dy = -r; dy <= r; dy++) {
+				for (int dz = -r; dz <= r; dz++) {
+					if (dx * dx + dy * dy + dz * dz > r2) {
+						continue;
+					}
+					cursor.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+					if (!level.isLoaded(cursor)) {
+						continue;
+					}
+					if (level.getBlockState(cursor).is(Blocks.FIRE) || level.getBlockState(cursor).is(Blocks.SOUL_FIRE)) {
+						level.removeBlock(cursor, false);
+					}
+				}
+			}
+		}
+		recountActiveCells();
+		int sparks = embers.douseInRadius(center, r);
+		return new DouseResult(extinguished, sparks);
 	}
 
 	public void updateIncidentStats(FireIncident incident) {
@@ -331,6 +487,10 @@ public final class FireSimulation {
 		incident.threatenedStructures = structures;
 	}
 
+	public FirestormState firestorm() {
+		return firestorm;
+	}
+
 	public void tick(IncidentManager manager) {
 		ForestFireConfig.Data cfg = ForestFireConfig.get();
 		tickCounter++;
@@ -338,11 +498,18 @@ public final class FireSimulation {
 			return;
 		}
 
-		firebreaks.tick();
+		firebreaks.tick(Math.max(1, cfg.fireTickInterval));
+		recountActiveCells();
+		refreshChunkTickets(cfg);
+		// Large flaming area → firestorm: self-heating, faster run, fire-driven wind
+		firestorm = FirestormState.evaluate(level, cells);
 		WindSystem wind = manager.wind();
+		wind.applyFirestorm(firestorm);
+
 		RandomSource random = level.getRandom();
 		int spreadBudget = cfg.maxSpreadChecksPerTick;
 		int emberBudget = cfg.maxEmbersPerTick;
+		float timeScale = FireSpreadMath.timeScale(cfg.fireTickInterval);
 
 		List<Long> keys = new ArrayList<>(cells.keySet());
 		// Shuffle lightly by rotating start index for fairness
@@ -358,42 +525,196 @@ public final class FireSimulation {
 			if (cell == null) {
 				continue;
 			}
-			tickCell(pos, cell, wind, manager, random, cfg);
+			boolean stormAffectsCell = firestorm.affects(key, cell);
+			float effectiveWindSpeed = stormAffectsCell ? wind.firestormSpeed() : wind.speed();
+			tickCell(pos, cell, wind, manager, random, cfg, timeScale, effectiveWindSpeed);
 
 			BurnStage stage = cell.stage();
-			if (stage.hasVisibleFlames() && spreadBudget > 0) {
-				spreadBudget -= spreadFrom(pos, cell, wind, manager, random, cfg);
+			// Firestorm self-heating: the mass of fire dries and heats fuel harder
+			if (stormAffectsCell && stage.hasVisibleFlames()) {
+				cell.addHeat(cfg.firestormSelfHeat * firestorm.intensity * timeScale);
+				cell.addMoisture(-0.6F * firestorm.intensity * timeScale);
 			}
-			if (stage.hasVisibleFlames() && emberBudget > 0 && cell.material().emberRate > 0) {
-				if (random.nextFloat() < cell.material().emberRate * wind.speed() * 0.5F) {
-					if (embers.spawn(level, pos, wind, cell.incidentId, cfg)) {
+
+			if (stage.hasVisibleFlames() && spreadBudget > 0) {
+				spreadBudget -= spreadFrom(pos, cell, wind, cfg, timeScale, spreadBudget);
+			}
+			// Heat-lifted plant sparks — amplified in firestorm
+			if (stage.hasVisibleFlames() && emberBudget > 0 && cfg.sparksEnabled) {
+				float emberBase = Math.max(0.08F, cell.material().emberRate);
+				float heatBonus = cell.heat01() * cfg.sparkHeatBonus;
+				float fullyInvolved = stage == BurnStage.FULLY_INVOLVED ? 1.35F : 1.0F;
+				float windFactor = 0.35F + effectiveWindSpeed * 0.9F;
+				float chance = emberBase * windFactor * fullyInvolved * (0.45F + heatBonus);
+				if (cell.material().crownFuel) {
+					chance *= 1.45F;
+				}
+				if (stormAffectsCell) {
+					chance *= firestorm.sparkMultiplier;
+				}
+				float stepChance = FireSpreadMath.probabilityForStep(Math.min(0.92F, chance), timeScale);
+				if (random.nextFloat() < stepChance) {
+					if (embers.spawn(
+						level,
+						pos,
+						wind,
+						effectiveWindSpeed,
+						cell.incidentId,
+						cfg,
+						cell.heat01(),
+						cell.material().flameIntensity,
+						cell.material()
+					)) {
 						emberBudget--;
 					}
 				}
 			}
 
-			// Visual: light smoke for hotspots / flames
-			if (cfg.smokeEnabled && stage.isBurning() && random.nextInt(8) == 0) {
+			// Visual: light smoke for hotspots / flames (heavier column in firestorm)
+			if (cfg.smokeEnabled && stage.isBurning() && random.nextInt(stormAffectsCell ? 4 : 8) == 0) {
 				level.sendParticles(
 					stage.hasVisibleFlames() ? ParticleTypes.LARGE_SMOKE : ParticleTypes.SMOKE,
 					pos.getX() + 0.5, pos.getY() + 1.1, pos.getZ() + 0.5,
-					1, 0.1, 0.2, 0.1, 0.01
+					stormAffectsCell ? 2 : 1, 0.1, 0.25, 0.1, 0.01
 				);
 			}
 
-			// Cleanup dead cells
-			if ((stage == BurnStage.UNBURNED || stage == BurnStage.EXTINGUISHED || stage == BurnStage.CHARRED)
-				&& (cell.heat & 0xFF) == 0 && cell.reignitionTimer <= 0) {
-				if (stage == BurnStage.CHARRED || stage == BurnStage.EXTINGUISHED) {
-					// keep charred briefly then drop
-					if (random.nextInt(40) == 0 && stage == BurnStage.EXTINGUISHED) {
-						cells.remove(key);
-					}
-				}
+			// Unheated fuel does not need a retained simulation cell. Spent and
+			// extinguished cells stay as fuel-history markers and cannot reset.
+			if (stage == BurnStage.UNBURNED && (cell.heat & 0xFF) == 0 && cell.reignitionTimer <= 0) {
+				cells.remove(key);
+				activeCellCount = Math.max(0, activeCellCount - 1);
 			}
 		}
 
 		embers.tick(level, this, cfg);
+		BurningTreeCollapse.tickCleanup(level);
+	}
+
+	/**
+	 * Keep a bounded buffer of chunks around the active fire front loaded.
+	 *
+	 * <p>Without this, every spread resolver stops at {@link ServerLevel#isLoaded}
+	 * and a wildfire forms an artificial straight edge on the chunk boundary.
+	 * Overlapping ticket regions are coalesced before the hard centre limit is
+	 * applied.</p>
+	 */
+	private void refreshChunkTickets(ForestFireConfig.Data cfg) {
+		int radius = cfg.chunkUnloadRetentionRadius;
+		if (radius <= 0 || cells.isEmpty()) {
+			releaseChunkTickets();
+			return;
+		}
+
+		Map<Long, ChunkActivity> activeChunks = new HashMap<>();
+		for (Map.Entry<Long, FireCell> entry : cells.entrySet()) {
+			FireCell cell = entry.getValue();
+			int priority = chunkActivityPriority(cell);
+			if (priority <= 0) {
+				continue;
+			}
+			long chunkKey = ChunkPos.pack(BlockPos.of(entry.getKey()));
+			int heat = cell.heat & 0xFF;
+			activeChunks.merge(
+				chunkKey,
+				new ChunkActivity(chunkKey, priority, heat),
+				(left, right) -> new ChunkActivity(
+					chunkKey,
+					Math.max(left.priority, right.priority),
+					Math.max(left.heat, right.heat)
+				)
+			);
+		}
+
+		if (activeChunks.isEmpty()) {
+			releaseChunkTickets();
+			return;
+		}
+
+		List<ChunkActivity> ordered = new ArrayList<>(activeChunks.values());
+		ordered.sort(
+			Comparator.comparingInt(ChunkActivity::priority).reversed()
+				.thenComparing(Comparator.comparingInt(ChunkActivity::heat).reversed())
+				.thenComparingLong(ChunkActivity::chunkKey)
+		);
+
+		int coverageMargin = Math.max(0, radius - 1);
+		List<Long> selected = new ArrayList<>();
+		Set<Long> covered = new HashSet<>();
+		for (ChunkActivity activity : ordered) {
+			if (selected.size() >= cfg.maxFireChunkTickets) {
+				break;
+			}
+			if (!covered.contains(activity.chunkKey)) {
+				selected.add(activity.chunkKey);
+				int centreX = ChunkPos.getX(activity.chunkKey);
+				int centreZ = ChunkPos.getZ(activity.chunkKey);
+				for (int dx = -coverageMargin; dx <= coverageMargin; dx++) {
+					for (int dz = -coverageMargin; dz <= coverageMargin; dz++) {
+						covered.add(ChunkPos.pack(centreX + dx, centreZ + dz));
+					}
+				}
+			}
+		}
+		Set<Long> desired = new HashSet<>(selected);
+
+		Iterator<Map.Entry<Long, Integer>> iterator = activeFireChunkTickets.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Long, Integer> existing = iterator.next();
+			if (!desired.contains(existing.getKey()) || existing.getValue() != radius) {
+				level.getChunkSource().removeTicketWithRadius(
+					FireChunkTickets.ACTIVE_FIRE,
+					ChunkPos.unpack(existing.getKey()),
+					existing.getValue()
+				);
+				iterator.remove();
+			}
+		}
+
+		for (long chunkKey : selected) {
+			// Re-adding the same type/level resets the safety timeout.
+			level.getChunkSource().addTicketWithRadius(
+				FireChunkTickets.ACTIVE_FIRE,
+				ChunkPos.unpack(chunkKey),
+				radius
+			);
+			activeFireChunkTickets.put(chunkKey, radius);
+		}
+	}
+
+	private void releaseChunkTickets() {
+		if (activeFireChunkTickets.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<Long, Integer> entry : activeFireChunkTickets.entrySet()) {
+			level.getChunkSource().removeTicketWithRadius(
+				FireChunkTickets.ACTIVE_FIRE,
+				ChunkPos.unpack(entry.getKey()),
+				entry.getValue()
+			);
+		}
+		activeFireChunkTickets.clear();
+	}
+
+	private static int chunkActivityPriority(FireCell cell) {
+		BurnStage stage = cell.stage();
+		if (stage.hasVisibleFlames()) {
+			return 4;
+		}
+		if (stage == BurnStage.IGNITED) {
+			return 3;
+		}
+		if (stage == BurnStage.HEATING && (cell.heat & 0xFF) > 0) {
+			return 2;
+		}
+		if (stage == BurnStage.SMOULDERING || stage == BurnStage.REIGNITION_RISK
+			|| (stage == BurnStage.WET && (cell.heat & 0xFF) > 0)) {
+			return 1;
+		}
+		return 0;
+	}
+
+	private record ChunkActivity(long chunkKey, int priority, int heat) {
 	}
 
 	private void tickCell(
@@ -402,25 +723,27 @@ public final class FireSimulation {
 		WindSystem wind,
 		IncidentManager manager,
 		RandomSource random,
-		ForestFireConfig.Data cfg
+		ForestFireConfig.Data cfg,
+		float timeScale,
+		float effectiveWindSpeed
 	) {
 		FuelMaterial material = cell.material();
 		BurnStage stage = cell.stage();
 
 		// Rain wetness — mild; must not wipe a wildfire in seconds
 		if (WeatherFireModel.isRainingAt(level, pos) && stage.hasVisibleFlames()) {
-			cell.addMoisture(0.6F);
-			cell.addHeat(-0.8F);
+			cell.addMoisture(0.6F * timeScale);
+			cell.addHeat(-0.8F * timeScale);
 		} else if (WeatherFireModel.isRainingAt(level, pos)) {
-			cell.addMoisture(1.2F);
-			cell.addHeat(-1.5F);
+			cell.addMoisture(1.2F * timeScale);
+			cell.addHeat(-1.5F * timeScale);
 		}
 
 		// Dry wet blocks
 		if (stage == BurnStage.WET) {
-			float dryRate = 0.4F + wind.speed() * 0.6F + WeatherFireModel.temperature01(level, pos);
+			float dryRate = 0.4F + effectiveWindSpeed * 0.6F + WeatherFireModel.temperature01(level, pos);
 			if (!WeatherFireModel.isRainingAt(level, pos)) {
-				cell.addMoisture(-dryRate);
+				cell.addMoisture(-dryRate * timeScale);
 			}
 			if (cell.moisture01() < 0.35F) {
 				cell.setStage(BurnStage.UNBURNED);
@@ -435,10 +758,13 @@ public final class FireSimulation {
 			}
 			// Residual heat
 			if ((cell.heat & 0xFF) > 5) {
-				cell.addHeat(-0.3F);
-			} else if (random.nextFloat() < 0.01F * (1.0F - cell.moisture01())) {
+				cell.addHeat(-0.3F * timeScale);
+			} else if (random.nextFloat() < FireSpreadMath.probabilityForStep(
+				0.01F * (1.0F - cell.moisture01()),
+				timeScale
+			)) {
 				cell.setStage(BurnStage.IGNITED);
-				cell.heat = 45;
+				cell.setHeat(45);
 			} else if (cell.reignitionTimer <= 0 && (cell.heat & 0xFF) < 8) {
 				cell.setStage(BurnStage.EXTINGUISHED);
 			}
@@ -448,13 +774,13 @@ public final class FireSimulation {
 		if (stage == BurnStage.HEATING) {
 			// Living leaves dry when heated
 			if (material == FuelMaterial.LIVING_LEAVES) {
-				cell.addMoisture(-0.8F);
+				cell.addMoisture(-0.8F * timeScale);
 			}
-			float igniteThreshold = 30.0F + cell.moisture01() * 40.0F;
-			if ((cell.heat & 0xFF) >= igniteThreshold * (1.0F - material.igniteEase * 0.4F)) {
+			float igniteThreshold = FireSpreadMath.ignitionThreshold(material.igniteEase, cell.moisture01());
+			if ((cell.heat & 0xFF) >= igniteThreshold) {
 				cell.setStage(BurnStage.IGNITED);
 			} else {
-				cell.addHeat(-0.5F); // cool if not fed
+				cell.addHeat(-0.5F * timeScale); // cool if not fed
 				if ((cell.heat & 0xFF) <= 0) {
 					cell.setStage(BurnStage.UNBURNED);
 				}
@@ -463,8 +789,8 @@ public final class FireSimulation {
 		}
 
 		if (stage == BurnStage.IGNITED) {
-			cell.addHeat(2.0F + material.flameIntensity * 3.0F);
-			cell.addMoisture(-1.5F);
+			cell.addHeat((2.0F + material.flameIntensity * 3.0F) * timeScale);
+			cell.addMoisture(-1.5F * timeScale);
 			if ((cell.heat & 0xFF) > 50) {
 				cell.setStage(BurnStage.FLAMING);
 				ensureFireVisual(pos);
@@ -475,30 +801,48 @@ public final class FireSimulation {
 		if (stage == BurnStage.FLAMING || stage == BurnStage.FULLY_INVOLVED) {
 			float burnRate = stage == BurnStage.FULLY_INVOLVED ? 1.25F : 1.0F;
 			// Slow fuel burn so leaves/logs last for a real firefight, not ~10s
-			cell.consumeFuel(material.fuelConsumePerTick() * burnRate);
-			cell.addMoisture(-1.2F);
+			cell.consumeFuel(material.fuelConsumePerTick() * burnRate * timeScale);
+			cell.addMoisture(-1.2F * timeScale);
 			// Sustain heat while fuel remains
 			float heatDelta = material.flameIntensity * 1.2F + 0.4F;
 			if ((cell.fuel & 0xFF) < 15) {
 				heatDelta -= 0.8F;
 			}
-			cell.addHeat(heatDelta);
+			cell.addHeat(heatDelta * timeScale);
 			if ((cell.heat & 0xFF) > 75 && stage == BurnStage.FLAMING) {
 				cell.setStage(BurnStage.FULLY_INVOLVED);
 			}
-			// Structural damage for trunks / buildings (slower)
-			if (material.longBurn && random.nextInt(3) == 0) {
-				int integrity = (cell.integrity & 0xFF) - 1;
-				cell.integrity = (byte) Math.max(0, integrity);
-				if (cfg.treeCollapseEnabled && material == FuelMaterial.TRUNK
-					&& integrity < 25 && random.nextFloat() < cfg.treeCollapseChance) {
-					collapseTree(pos, cell, wind, random);
+			// Structural damage for trunks — weakens then falls via Realistic Tree Felling
+			if (material == FuelMaterial.TRUNK || material == FuelMaterial.LOG) {
+				int integrityLoss = stage == BurnStage.FULLY_INVOLVED ? 2 : 1;
+				if (random.nextFloat() < FireSpreadMath.probabilityForStep(0.5F, timeScale)) {
+					int integrity = Math.max(0, (cell.integrity & 0xFF) - integrityLoss);
+					cell.integrity = (byte) integrity;
+				}
+				int integrity = cell.integrity & 0xFF;
+				// Cracking warning when near collapse
+				if (cfg.treeCollapseEnabled && integrity > 0 && integrity < 40
+					&& random.nextFloat() < FireSpreadMath.probabilityForStep(0.025F, timeScale)) {
+					level.playSound(null, pos, SoundEvents.WOOD_HIT, SoundSource.BLOCKS, 0.45F, 0.5F + integrity * 0.01F);
+				}
+				float collapseChance = cfg.treeCollapseChance;
+				if (stage == BurnStage.FULLY_INVOLVED) {
+					collapseChance *= 2.0F;
+				}
+				if (integrity < 15) {
+					collapseChance *= 2.5F;
+				}
+				if (cfg.treeCollapseEnabled
+					&& integrity < 30
+					&& (cell.fuel & 0xFF) < 70
+					&& random.nextFloat() < FireSpreadMath.probabilityForStep(collapseChance, timeScale)) {
+					BurningTreeCollapse.tryCollapse(level, this, pos, cell, wind, random);
 				}
 			}
 			ensureFireVisual(pos);
 			if ((cell.fuel & 0xFF) <= 0) {
 				cell.setStage(material.longBurn ? BurnStage.SMOULDERING : BurnStage.CHARRED);
-				cell.heat = (byte) (material.longBurn ? 45 : 15);
+				cell.setHeat(material.longBurn ? 45 : 15);
 				charBlock(pos, material);
 				clearFireVisual(pos);
 			}
@@ -506,22 +850,23 @@ public final class FireSimulation {
 		}
 
 		if (stage == BurnStage.SMOULDERING) {
-			cell.addHeat(-0.8F);
-			cell.consumeFuel(0.2F);
+			cell.addHeat(-0.8F * timeScale);
+			cell.consumeFuel(0.2F * timeScale);
 			if ((cell.heat & 0xFF) < 12) {
 				cell.setStage(BurnStage.REIGNITION_RISK);
 				cell.reignitionTimer = (short) (300 + random.nextInt(600));
 				charBlock(pos, material);
-			} else if (random.nextFloat() < 0.02F && cell.moisture01() < 0.3F) {
+			} else if (random.nextFloat() < FireSpreadMath.probabilityForStep(0.02F, timeScale)
+				&& cell.moisture01() < 0.3F) {
 				// flare-up
 				cell.setStage(BurnStage.FLAMING);
-				cell.heat = 55;
+				cell.setHeat(55);
 			}
 			return;
 		}
 
 		if (stage == BurnStage.CHARRED) {
-			cell.addHeat(-1.0F);
+			cell.addHeat(-1.0F * timeScale);
 		}
 	}
 
@@ -529,46 +874,104 @@ public final class FireSimulation {
 		BlockPos pos,
 		FireCell cell,
 		WindSystem wind,
-		IncidentManager manager,
-		RandomSource random,
-		ForestFireConfig.Data cfg
+		ForestFireConfig.Data cfg,
+		float timeScale,
+		int maxChecks
 	) {
 		int checks = 0;
-		FireDangerLevel danger = WeatherFireModel.danger(level, pos, wind);
-		float dangerMul = danger.spreadMultiplier();
+		boolean stormAffectsSource = firestorm.affects(pos.asLong(), cell);
+		float effectiveWindSpeed = stormAffectsSource ? wind.firestormSpeed() : wind.speed();
+		FireDangerLevel danger = WeatherFireModel.danger(level, pos, effectiveWindSpeed);
+		float dangerMul = danger.spreadMultiplier()
+			* (stormAffectsSource ? firestorm.spreadMultiplier : 1.0F);
 		float humidity = WeatherFireModel.humidity01(level, pos);
+		// Large fires dry the air locally
+		if (stormAffectsSource) {
+			humidity *= 1.0F - 0.35F * firestorm.intensity;
+		}
 
-		// Direct + radiant to 6 neighbours and some windward extras
-		for (Direction dir : NEIGHBOURS) {
+		boolean surfaceSource = isSurfaceFuel(cell.material());
+		for (int[] offset : HORIZONTAL_OFFSETS) {
+			if (checks >= maxChecks) {
+				return checks;
+			}
+			BlockPos target = findHorizontalFuel(pos, offset[0], offset[1]);
+			if (target != null) {
+				checks++;
+				attemptSpread(
+					pos,
+					target,
+					cell,
+					wind,
+					effectiveWindSpeed,
+					dangerMul,
+					humidity,
+					cfg,
+					timeScale,
+					surfaceSource ? SpreadPath.SURFACE : SpreadPath.CONTACT
+				);
+			}
+		}
+
+		// Convection carries heat upward through gaps; downward radiation is much weaker.
+		BlockPos upward = findVerticalFuel(pos, Direction.UP, 4);
+		if (upward != null && checks < maxChecks) {
 			checks++;
-			BlockPos target = pos.relative(dir);
-			attemptSpread(pos, target, cell, wind, dangerMul, humidity, cfg, random, false);
+			attemptSpread(
+				pos,
+				upward,
+				cell,
+				wind,
+				effectiveWindSpeed,
+				dangerMul,
+				humidity,
+				cfg,
+				timeScale,
+				SpreadPath.CONVECTION_UP
+			);
+		}
+		BlockPos downward = findVerticalFuel(pos, Direction.DOWN, 2);
+		if (downward != null && checks < maxChecks) {
+			checks++;
+			attemptSpread(
+				pos,
+				downward,
+				cell,
+				wind,
+				effectiveWindSpeed,
+				dangerMul,
+				humidity,
+				cfg,
+				timeScale,
+				SpreadPath.CONVECTION_DOWN
+			);
 		}
 
-		// Crown fire: horizontal leaf-to-leaf jumps
-		if (cell.material().crownFuel) {
-			for (Direction dir : HORIZONTAL) {
-				checks++;
-				BlockPos target = pos.relative(dir, 1 + (wind.speed() > 0.5F ? 1 : 0));
-				// Bias with wind
-				float biasX = wind.dx() * wind.speed();
-				float biasZ = wind.dz() * wind.speed();
-				if (dir.getStepX() * biasX + dir.getStepZ() * biasZ < -0.1F && random.nextFloat() > 0.35F) {
-					continue;
+		// Crown-to-crown flame transfer only crosses a one-block canopy gap.
+		// Wider gaps are handled by airborne embers, not teleporting direct fire.
+		if (cell.material().crownFuel && cell.heat01() >= 0.65F) {
+			for (int[] offset : HORIZONTAL_OFFSETS) {
+				if (checks >= maxChecks) {
+					return checks;
 				}
-				attemptSpread(pos, target, cell, wind, dangerMul * cfg.crownSpreadMultiplier, humidity, cfg, random, true);
+				BlockPos target = findCrownFuel(pos, offset[0] * 2, offset[1] * 2);
+				if (target != null) {
+					checks++;
+					attemptSpread(
+						pos,
+						target,
+						cell,
+						wind,
+						effectiveWindSpeed,
+						dangerMul,
+						humidity,
+						cfg,
+						timeScale,
+						SpreadPath.CROWN
+					);
+				}
 			}
 		}
-
-		// Surface fire along ground
-		if (cell.material() == FuelMaterial.GRASS || cell.material() == FuelMaterial.DEAD_BUSH) {
-			for (Direction dir : HORIZONTAL) {
-				checks++;
-				BlockPos target = pos.relative(dir);
-				attemptSpread(pos, target, cell, wind, dangerMul * cfg.surfaceSpreadMultiplier, humidity, cfg, random, false);
-			}
-		}
-
 		return checks;
 	}
 
@@ -577,74 +980,194 @@ public final class FireSimulation {
 		BlockPos to,
 		FireCell source,
 		WindSystem wind,
+		float effectiveWindSpeed,
 		float dangerMul,
 		float humidity,
 		ForestFireConfig.Data cfg,
-		RandomSource random,
-		boolean crown
+		float timeScale,
+		SpreadPath path
 	) {
-		if (!level.isLoaded(to)) {
+		if (to.equals(from) || !level.isLoaded(to)) {
 			return;
 		}
-		if (firebreaks.blocksSpread(from, to, wind.speed(), source.heat01())) {
-			return;
-		}
+
 		BlockState state = level.getBlockState(to);
 		FuelMaterial material = FuelMaterial.of(state);
-		if (!material.flammable()) {
-			// Try vegetation on top of solid blocks
-			BlockPos above = to.above();
-			if (level.isLoaded(above)) {
-				material = FuelMaterial.of(level.getBlockState(above));
-				if (material.flammable()) {
-					to = above;
-					state = level.getBlockState(to);
-				} else {
-					return;
-				}
-			} else {
-				return;
-			}
+		if (!material.flammable() || (material == FuelMaterial.PEAT && !cfg.peatFireEnabled)) {
+			return;
 		}
-
-		int dx = Integer.signum(to.getX() - from.getX());
-		int dz = Integer.signum(to.getZ() - from.getZ());
-		float slope = WeatherFireModel.slopeFactor(level, from, dx, dz);
-		if (slope > 1.0F) {
-			slope = 1.0F + (slope - 1.0F) * cfg.uphillSpreadBonus;
-		} else if (slope < 1.0F) {
-			slope = 1.0F - (1.0F - slope) * cfg.downhillSpreadPenalty;
-		}
-
-		// Wind alignment
-		float windAlign = 1.0F + wind.speed() * (dx * wind.dx() + dz * wind.dz());
-		windAlign = Mth.clamp(windAlign, 0.35F, 2.2F);
-
-		float chance = source.material().flameIntensity * material.igniteEase * dangerMul * slope * windAlign;
-		chance *= (1.0F - humidity * 0.40F);
-		chance *= Math.max(0.35F, source.heat01());
-		if (crown) {
-			chance *= 1.35F;
-		}
-		if (WeatherFireModel.isRainingAt(level, to)) {
-			chance *= 0.40F;
-		}
-		// Higher base spread so fires grow instead of dying in place
-		if (random.nextFloat() > Math.min(0.92F, chance * 0.55F + 0.08F)) {
+		if (path == SpreadPath.CROWN && !material.crownFuel) {
 			return;
 		}
 
-		float heatTransfer = 12.0F + source.heat01() * 22.0F * (crown ? 1.3F : 1.0F);
-		// Radiant heat even if not igniting fully
-		FireCell existing = cells.get(to.asLong());
-		if (existing != null) {
-			existing.addHeat(heatTransfer * 0.5F * cfg.radiantHeatMultiplier);
-			if (existing.stage() == BurnStage.UNBURNED) {
-				existing.setStage(BurnStage.HEATING);
-			}
-		} else {
-			tryIgnite(to, source.incidentId, Math.round(heatTransfer), false);
+		FireCell target = cells.get(to.asLong());
+		if (target != null && (target.stage().hasVisibleFlames() || (target.fuel & 0xFF) <= 0)) {
+			return;
 		}
+		boolean needsActiveSlot = target == null
+			|| target.stage() == BurnStage.CHARRED
+			|| target.stage() == BurnStage.EXTINGUISHED;
+		if (needsActiveSlot && activeCellCount >= cfg.maxBurningBlocksPerWorld) {
+			return;
+		}
+
+		// Resolve the actual fuel block before checking a wet line or firebreak.
+		float breakWind = effectiveWindSpeed
+			+ (firestorm.affects(from.asLong(), source) ? firestorm.intensity * 0.4F : 0.0F);
+		if (firebreaks.blocksSpread(from, to, breakWind, source.heat01())) {
+			return;
+		}
+
+		float travelX = to.getX() - from.getX();
+		float travelZ = to.getZ() - from.getZ();
+		float horizontalDistance = (float) Math.sqrt(travelX * travelX + travelZ * travelZ);
+		float distance = (float) Math.sqrt(
+			travelX * travelX
+				+ (to.getY() - from.getY()) * (float) (to.getY() - from.getY())
+				+ travelZ * travelZ
+		);
+		float windMultiplier = horizontalDistance > 0.0F
+			? FireSpreadMath.windFactor(effectiveWindSpeed, wind.dx(), wind.dz(), travelX, travelZ)
+			: 1.0F;
+		float slopeMultiplier = path == SpreadPath.SURFACE
+			? FireSpreadMath.slopeFactor(
+				to.getY() - from.getY(),
+				horizontalDistance,
+				cfg.uphillSpreadBonus,
+				cfg.downhillSpreadPenalty
+			)
+			: 1.0F;
+		float targetMoisture = target == null
+			? WeatherFireModel.initialFuelMoisture01(level, to, material.baseMoisture)
+			: target.moisture01();
+		float transferMultiplier = switch (path) {
+			case SURFACE -> cfg.surfaceSpreadMultiplier;
+			case CONTACT -> 0.72F;
+			case CONVECTION_UP -> 1.55F;
+			case CONVECTION_DOWN -> 0.25F;
+			case CROWN -> cfg.crownSpreadMultiplier * 1.10F;
+		};
+		if (material == FuelMaterial.PEAT) {
+			transferMultiplier *= Mth.clamp(cfg.peatSpreadChance * 10.0F, 0.02F, 0.25F);
+		}
+
+		float heatTransfer = FireSpreadMath.heatFlux(
+			source.heat01(),
+			source.material().flameIntensity,
+			material.igniteEase,
+			dangerMul,
+			windMultiplier,
+			slopeMultiplier,
+			humidity,
+			targetMoisture,
+			transferMultiplier,
+			distance,
+			WeatherFireModel.isRainingAt(level, to)
+		);
+		heatTransfer *= (0.35F + 0.65F * (float) Math.sqrt(source.fuel01()));
+		heatTransfer *= cfg.radiantHeatMultiplier * timeScale;
+		if (heatTransfer < 0.05F) {
+			return;
+		}
+
+		if (target == null) {
+			target = getOrCreate(to, material, source.incidentId);
+		}
+		target.incidentId = source.incidentId > 0 ? source.incidentId : target.incidentId;
+		target.addMoisture(-heatTransfer * 0.025F);
+		target.addHeat(heatTransfer);
+
+		BurnStage targetStage = target.stage();
+		if (targetStage == BurnStage.UNBURNED || targetStage == BurnStage.EXTINGUISHED
+			|| (targetStage == BurnStage.WET && target.moisture01() <= 0.55F)) {
+			target.setStage(BurnStage.HEATING);
+			if (targetStage == BurnStage.EXTINGUISHED) {
+				activeCellCount++;
+			}
+		}
+	}
+
+	private BlockPos findHorizontalFuel(BlockPos from, int dx, int dz) {
+		for (int dy : HEIGHT_SEARCH) {
+			BlockPos candidate = from.offset(dx, dy, dz);
+			if (!level.isLoaded(candidate)) {
+				continue;
+			}
+			FuelMaterial material = FuelMaterial.of(level.getBlockState(candidate));
+			if (isSpreadFuel(material) && canReceiveHeat(candidate)) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	private BlockPos findVerticalFuel(BlockPos from, Direction direction, int maxDistance) {
+		for (int distance = 1; distance <= maxDistance; distance++) {
+			BlockPos candidate = from.relative(direction, distance);
+			if (!level.isLoaded(candidate)) {
+				return null;
+			}
+			BlockState state = level.getBlockState(candidate);
+			FuelMaterial material = FuelMaterial.of(state);
+			if (isSpreadFuel(material) && canReceiveHeat(candidate)) {
+				return candidate;
+			}
+			if (!state.isAir() && !state.canBeReplaced()
+				&& !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE)) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	private BlockPos findCrownFuel(BlockPos from, int dx, int dz) {
+		for (int dy : HEIGHT_SEARCH) {
+			BlockPos candidate = from.offset(dx, dy, dz);
+			if (!level.isLoaded(candidate)) {
+				continue;
+			}
+			FuelMaterial material = FuelMaterial.of(level.getBlockState(candidate));
+			if (material.crownFuel && isSpreadFuel(material) && canReceiveHeat(candidate)) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	private boolean isSpreadFuel(FuelMaterial material) {
+		return material.flammable()
+			&& (material != FuelMaterial.PEAT || ForestFireConfig.get().peatFireEnabled);
+	}
+
+	private boolean canReceiveHeat(BlockPos pos) {
+		FireCell cell = cells.get(pos.asLong());
+		return cell == null || (!cell.stage().hasVisibleFlames() && (cell.fuel & 0xFF) > 0);
+	}
+
+	private static boolean isSurfaceFuel(FuelMaterial material) {
+		return material == FuelMaterial.GRASS
+			|| material == FuelMaterial.DEAD_BUSH
+			|| material == FuelMaterial.DRY_LEAVES
+			|| material == FuelMaterial.PEAT;
+	}
+
+	private void recountActiveCells() {
+		int count = 0;
+		for (FireCell cell : cells.values()) {
+			BurnStage stage = cell.stage();
+			if (stage != BurnStage.CHARRED && stage != BurnStage.EXTINGUISHED) {
+				count++;
+			}
+		}
+		activeCellCount = count;
+	}
+
+	private enum SpreadPath {
+		SURFACE,
+		CONTACT,
+		CONVECTION_UP,
+		CONVECTION_DOWN,
+		CROWN
 	}
 
 	private void ensureFireVisual(BlockPos pos) {
@@ -693,33 +1216,6 @@ public final class FireSimulation {
 		}
 	}
 
-	private void collapseTree(BlockPos pos, FireCell cell, WindSystem wind, RandomSource random) {
-		// Simplified staged collapse: remove a column of logs in wind direction, damage nearby
-		level.playSound(null, pos, SoundEvents.BAMBOO_WOOD_BREAK, SoundSource.BLOCKS, 1.0F, 0.6F);
-		Direction fall = wind.cardinal();
-		BlockPos.MutableBlockPos cursor = pos.mutable();
-		for (int y = 0; y < 8; y++) {
-			cursor.set(pos.getX(), pos.getY() + y, pos.getZ());
-			if (!level.isLoaded(cursor)) {
-				break;
-			}
-			BlockState state = level.getBlockState(cursor);
-			if (!state.is(BlockTags.LOGS) && y > 0) {
-				break;
-			}
-			if (state.is(BlockTags.LOGS)) {
-				BlockPos fallPos = cursor.relative(fall, 1 + y / 2);
-				level.removeBlock(cursor, false);
-				if (level.getBlockState(fallPos).isAir()) {
-					level.setBlock(fallPos, Blocks.COAL_BLOCK.defaultBlockState(), 3);
-					tryIgnite(fallPos, cell.incidentId, 40, true);
-				}
-			}
-		}
-		cell.integrity = 0;
-		cell.setStage(BurnStage.CHARRED);
-	}
-
 	/** Hook for vanilla fire conversion inside incident areas. */
 	public boolean shouldSuppressVanillaFire(BlockPos pos) {
 		if (!ForestFireConfig.get().replaceVanillaFireInIncidents) {
@@ -736,6 +1232,12 @@ public final class FireSimulation {
 
 	public void adoptVanillaFire(BlockPos firePos) {
 		BlockPos fuel = firePos.below();
+		FireCell managed = getCell(fuel);
+		if (managed != null && managed.stage().hasVisibleFlames()) {
+			// This is the visual fire placed by ensureFireVisual. Its vanilla
+			// tick is cancelled by the mixin; it must never refuel its owner.
+			return;
+		}
 		int incidentId = 0;
 		// Find nearest incident
 		IncidentManager manager = IncidentManager.get(level);

@@ -15,6 +15,13 @@ public final class FireCell {
 	public int incidentId;
 	/** Structural integrity for trunks / buildings (0–100). */
 	public byte integrity;
+	/**
+	 * Fractional residues keep sub-unit simulation rates deterministic instead of
+	 * rounding every fire tick to zero. They are persisted with the cell.
+	 */
+	public float heatRemainder;
+	public float moistureRemainder;
+	public float fuelRemainder;
 
 	public FireCell() {
 	}
@@ -61,18 +68,72 @@ public final class FireCell {
 	}
 
 	public void addHeat(float amount) {
-		int next = Math.min(100, Math.max(0, (heat & 0xFF) + Math.round(amount)));
+		if (!Float.isFinite(amount) || amount == 0.0F) {
+			return;
+		}
+		float accumulated = heatRemainder + amount;
+		int whole = wholeUnitsTowardZero(accumulated);
+		heatRemainder = accumulated - whole;
+		int current = heat & 0xFF;
+		int next = Math.min(100, Math.max(0, current + whole));
+		if (next != current + whole) {
+			heatRemainder = 0.0F;
+		}
+		if ((next == 100 && heatRemainder > 0.0F) || (next == 0 && heatRemainder < 0.0F)) {
+			heatRemainder = 0.0F;
+		}
 		heat = (byte) next;
 	}
 
 	public void addMoisture(float amount) {
-		int next = Math.min(100, Math.max(0, (moisture & 0xFF) + Math.round(amount)));
+		if (!Float.isFinite(amount) || amount == 0.0F) {
+			return;
+		}
+		float accumulated = moistureRemainder + amount;
+		int whole = wholeUnitsTowardZero(accumulated);
+		moistureRemainder = accumulated - whole;
+		int current = moisture & 0xFF;
+		int next = Math.min(100, Math.max(0, current + whole));
+		if (next != current + whole) {
+			moistureRemainder = 0.0F;
+		}
+		if ((next == 100 && moistureRemainder > 0.0F) || (next == 0 && moistureRemainder < 0.0F)) {
+			moistureRemainder = 0.0F;
+		}
 		moisture = (byte) next;
 	}
 
 	public void consumeFuel(float amount) {
-		int next = Math.max(0, (fuel & 0xFF) - Math.round(amount));
+		if (!Float.isFinite(amount) || amount <= 0.0F) {
+			return;
+		}
+		float accumulated = fuelRemainder + amount;
+		int whole = (int) Math.floor(accumulated);
+		fuelRemainder = accumulated - whole;
+		int next = Math.max(0, (fuel & 0xFF) - whole);
+		if (next == 0) {
+			fuelRemainder = 0.0F;
+		}
 		fuel = (byte) next;
+	}
+
+	public void setHeat(int value) {
+		heat = (byte) Math.min(100, Math.max(0, value));
+		heatRemainder = 0.0F;
+	}
+
+	public void setMoisture(int value) {
+		moisture = (byte) Math.min(100, Math.max(0, value));
+		moistureRemainder = 0.0F;
+	}
+
+	public void setFuel(int value) {
+		fuel = (byte) Math.min(100, Math.max(0, value));
+		fuelRemainder = 0.0F;
+	}
+
+	private static int wholeUnitsTowardZero(float value) {
+		return value >= 0.0F ? (int) Math.floor(value) : (int) Math.ceil(value);
 	}
 
 	public ThermalReading thermalReading() {
@@ -99,6 +160,9 @@ public final class FireCell {
 		copy.materialOrdinal = materialOrdinal;
 		copy.incidentId = incidentId;
 		copy.integrity = integrity;
+		copy.heatRemainder = heatRemainder;
+		copy.moistureRemainder = moistureRemainder;
+		copy.fuelRemainder = fuelRemainder;
 		return copy;
 	}
 

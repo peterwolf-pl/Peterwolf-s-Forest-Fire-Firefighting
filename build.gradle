@@ -20,10 +20,44 @@ loom {
 	}
 }
 
+// Optional soft dependency: Peterwolf's Planes (firefighting water bomber).
+// Build planes first: `../peterwolfs-planes/gradlew jar`
+def planesJar = file("../peterwolfs-planes/build/libs/peterwolfs-planes-1.1.15.jar")
+def hasPlanesApi = planesJar.exists()
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	if (hasPlanesApi) {
+		compileOnly files(planesJar)
+		localRuntime files(planesJar)
+	}
+}
+
+// When Planes JAR is missing, exclude hard-dependent sources so the hose/fire mod still builds.
+if (!hasPlanesApi) {
+	logger.lifecycle("Peterwolf's Planes JAR not found at ${planesJar} — compiling without firefighting aircraft sources.")
+	sourceSets.main.java.exclude(
+		'**/aircraft/**',
+		'**/compat/planes/**',
+		'**/command/FireplaneCommands.java',
+		'**/network/firefighting/**'
+	)
+	sourceSets.client.java.exclude(
+		'**/aircraft/**',
+		'**/compat/planes/**',
+		'**/client/aircraft/**'
+	)
+}
+
+sourceSets {
+	fireSpreadTest {
+		java.srcDir 'src/fireSpreadTest/java'
+		compileClasspath += sourceSets.main.output + configurations.testCompileClasspath
+		runtimeClasspath += output + compileClasspath + configurations.testRuntimeClasspath
+	}
 }
 
 processResources {
@@ -36,6 +70,27 @@ processResources {
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 	it.options.encoding = 'UTF-8'
+}
+
+tasks.register('fireSpreadMathTest', JavaExec) {
+	group = 'verification'
+	description = 'Runs deterministic wildfire spread and fractional-state checks.'
+	dependsOn tasks.named(sourceSets.fireSpreadTest.classesTaskName)
+	classpath = sourceSets.fireSpreadTest.runtimeClasspath
+	mainClass = 'com.peterwolf.forestfire.fire.simulation.FireSpreadMathTest'
+}
+
+tasks.register('firefightingAircraftLogicTest', JavaExec) {
+	group = 'verification'
+	description = 'Runs firefighting aircraft tank/scoop/budget logic checks.'
+	dependsOn tasks.named(sourceSets.fireSpreadTest.classesTaskName)
+	classpath = sourceSets.fireSpreadTest.runtimeClasspath
+	mainClass = 'com.peterwolf.forestfire.fire.simulation.FirefightingAircraftLogicTest'
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('fireSpreadMathTest')
+	dependsOn tasks.named('firefightingAircraftLogicTest')
 }
 
 java {

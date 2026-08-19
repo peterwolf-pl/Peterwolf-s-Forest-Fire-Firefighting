@@ -23,8 +23,7 @@ public final class ModItems {
 	// Blocks
 	public static final Item PORTABLE_PUMP = blockItem("portable_pump", ModBlocks.PORTABLE_PUMP);
 	public static final Item HOSE_SPLITTER = blockItem("hose_splitter", ModBlocks.HOSE_SPLITTER);
-	public static final Item FIRE_HOSE = blockItem("fire_hose", ModBlocks.FIRE_HOSE);
-	public static final Item INTAKE_HOSE = blockItem("intake_hose", ModBlocks.INTAKE_HOSE);
+	public static final Item INTAKE_STRAINER = blockItem("intake_strainer", ModBlocks.INTAKE_STRAINER);
 	public static final Item WATER_TANK_SMALL = blockItem("water_tank_small", ModBlocks.WATER_TANK_SMALL);
 	public static final Item WATER_TANK_MEDIUM = blockItem("water_tank_medium", ModBlocks.WATER_TANK_MEDIUM);
 	public static final Item WATER_TANK_LARGE = blockItem("water_tank_large", ModBlocks.WATER_TANK_LARGE);
@@ -36,8 +35,14 @@ public final class ModItems {
 	public static final Item BACKPACK_SPRAYER = register("backpack_sprayer", BackpackSprayerItem::new);
 	public static final Item THERMAL_SCANNER = register("thermal_scanner", ThermalScannerItem::new);
 	public static final Item FIREFIGHTER_INFO = register("firefighter_info", FirefighterInfoItem::new);
-	public static final Item INTAKE_STRAINER = register("intake_strainer", Item::new);
 	public static final Item PUMP_FUEL_CAN = register("pump_fuel_can", PumpFuelCanItem::new);
+
+	// Automatic hose system
+	public static final Item HOSE_CONNECTOR = register("hose_connector", HoseConnectorItem::new);
+	public static final Item HOSE_ANCHOR = register("hose_anchor", HoseAnchorItem::new);
+	public static final Item HOSE_ROLL_SMALL = register("hose_roll_small", p -> new HoseRollItem(p, 16));
+	public static final Item HOSE_ROLL_STANDARD = register("hose_roll_standard", p -> new HoseRollItem(p, 32));
+	public static final Item HOSE_ROLL_LARGE = register("hose_roll_large", p -> new HoseRollItem(p, 64));
 
 	public static final Item FIRE_AXE = register("fire_axe", p -> new FireToolItem(p, FireToolItem.ToolType.AXE));
 	public static final Item PULASKI = register("pulaski", p -> new FireToolItem(p, FireToolItem.ToolType.PULASKI));
@@ -62,8 +67,11 @@ public final class ModItems {
 		.displayItems((params, output) -> {
 			output.accept(PORTABLE_PUMP);
 			output.accept(HOSE_SPLITTER);
-			output.accept(FIRE_HOSE);
-			output.accept(INTAKE_HOSE);
+			output.accept(HOSE_ROLL_SMALL);
+			output.accept(HOSE_ROLL_STANDARD);
+			output.accept(HOSE_ROLL_LARGE);
+			output.accept(HOSE_CONNECTOR);
+			output.accept(HOSE_ANCHOR);
 			output.accept(INTAKE_STRAINER);
 			output.accept(WATER_TANK_SMALL);
 			output.accept(WATER_TANK_MEDIUM);

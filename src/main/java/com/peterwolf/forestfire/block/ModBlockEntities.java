@@ -2,6 +2,7 @@ package com.peterwolf.forestfire.block;
 
 import com.peterwolf.forestfire.ForestFireMod;
 import com.peterwolf.forestfire.firefighting.hose.HoseSplitterBlockEntity;
+import com.peterwolf.forestfire.firefighting.nozzle.GroundNozzleBlockEntity;
 import com.peterwolf.forestfire.firefighting.pump.PortablePumpBlockEntity;
 import com.peterwolf.forestfire.firefighting.water.PortableSprinklerBlockEntity;
 import com.peterwolf.forestfire.firefighting.water.PortableWaterTankBlockEntity;
@@ -38,6 +39,11 @@ public final class ModBlockEntities {
 	public static final BlockEntityType<CommandPostBlockEntity> COMMAND_POST = register(
 		"command_post",
 		FabricBlockEntityTypeBuilder.create(CommandPostBlockEntity::new, ModBlocks.COMMAND_POST).build()
+	);
+
+	public static final BlockEntityType<GroundNozzleBlockEntity> GROUND_NOZZLE = register(
+		"ground_nozzle",
+		FabricBlockEntityTypeBuilder.create(GroundNozzleBlockEntity::new, ModBlocks.GROUND_NOZZLE).build()
 	);
 
 	private ModBlockEntities() {
