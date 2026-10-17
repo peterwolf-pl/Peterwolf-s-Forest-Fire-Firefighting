@@ -1,7 +1,7 @@
 # Known Limitations (1.0.0)
 
 - Hose visuals are block segments, not continuous flexible mesh
-- No fire vehicles or aircraft yet (roadmap Stage 7/8+)
+- No ground fire vehicles yet. The Firefighting Water Bomber is available when Peterwolf's Planes is installed.
 - Command post UI is chat/text based (full GUI map planned)
 - Sector assignment is data-ready; interactive map markers UI is partial
 - Peat/underground fire disabled by default

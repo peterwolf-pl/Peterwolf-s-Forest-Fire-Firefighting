@@ -89,7 +89,7 @@ Implementation:
 | Performance during big fires | Raycast scoop; bounded suppression ops/tick; no water source spam |
 | Tank desync / dupes | Server authority; synched data only for HUD/render; rate-limit actions |
 | Physics discontinuity when dumping | Gradual tank drain → smooth cargo mass factor |
-| Missing models/sounds | Procedural model from LargePlane + vanilla particle/sound fallbacks |
+| Missing models/sounds | Dedicated procedural flying-boat model + vanilla particle/sound fallbacks |
 | No fuel system in Planes | Documented limitation; weight effect only |
 
 ## 4. Milestones
@@ -109,7 +109,7 @@ Subsystem damage is **off by default** (config flag) for first stable version.
 | M1 Planes specialized API + cargo mass | Done |
 | M2 Entity, tank, config, network, item | Done |
 | M3 Scooping + aerial suppression | Done |
-| M4 Client keys, HUD, renderer | Done (model reuses large biplane mesh) |
+| M4 Client keys, HUD, renderer | Done (custom high-wing amphibious flying-boat mesh) |
 | M5 Commands + logic tests + build | Done |
 
 ### How to test in-game

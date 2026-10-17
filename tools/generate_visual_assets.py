@@ -21,6 +21,7 @@ ITEM_TEXTURES = ASSETS / "textures/item"
 BLOCK_TEXTURES = ASSETS / "textures/block"
 MATERIAL_TEXTURES = BLOCK_TEXTURES / "material"
 EQUIPMENT_TEXTURES = ASSETS / "textures/entity/equipment"
+ENTITY_TEXTURES = ASSETS / "textures/entity"
 BLOCK_MODELS = ASSETS / "models/block"
 CLIENT_ITEMS = ASSETS / "items"
 
@@ -52,6 +53,9 @@ WHITE = (238, 235, 219, 255)
 SCREEN_DARK = (16, 63, 65, 255)
 SCREEN = (72, 202, 171, 255)
 FOREST = (38, 87, 62, 255)
+GLASS_DARK = (12, 30, 45, 255)
+GLASS = (24, 72, 99, 255)
+GLASS_LIGHT = (71, 137, 163, 255)
 
 
 class Canvas:
@@ -363,6 +367,67 @@ def backpack_sprayer() -> Canvas:
     return c
 
 
+def firefighting_plane() -> Canvas:
+    """Readable 32px inventory silhouette of the amphibious high-wing bomber."""
+    c = Canvas(32, 32)
+
+    # Soft item shadow, kept blocky and translucent.
+    c.rect(4, 27, 27, 28, (0, 0, 0, 55))
+    c.rect(8, 29, 23, 29, (0, 0, 0, 35))
+
+    # Tall red tail and high horizontal stabiliser.
+    c.polygon([(25, 13), (27, 7), (29, 7), (29, 17), (27, 19), (25, 18)], INK)
+    c.polygon([(26, 13), (27, 8), (28, 8), (28, 17), (26, 18)], RED)
+    c.rect(22, 13, 30, 15, INK)
+    c.rect(23, 13, 29, 14, WHITE)
+
+    # Boat hull: white upper body, rescue stripe, red lower hull and dark keel.
+    c.polygon([(2, 18), (5, 14), (18, 14), (25, 17), (28, 20), (26, 23),
+               (8, 25), (3, 23)], INK)
+    c.polygon([(3, 18), (6, 15), (18, 15), (24, 17), (27, 20), (24, 21),
+               (7, 22), (4, 21)], WHITE)
+    c.polygon([(4, 21), (25, 20), (24, 23), (8, 24), (4, 22)], RED)
+    c.line(6, 23, 23, 23, RED_DARK, 2)
+    c.line(9, 25, 23, 24, RUBBER, 1)
+    c.line(5, 20, 24, 19, YELLOW, 1)
+
+    # Framed two-seat cockpit glazing.
+    c.polygon([(5, 16), (8, 13), (13, 13), (15, 17)], INK)
+    c.polygon([(7, 15), (9, 14), (11, 14), (12, 17), (6, 17)], GLASS)
+    c.line(9, 14, 9, 17, GLASS_LIGHT)
+
+    # Straight high wing with stepped red tips.
+    c.rect(1, 9, 30, 12, INK)
+    c.rect(3, 9, 28, 11, WHITE)
+    c.rect(1, 9, 5, 11, RED)
+    c.rect(27, 9, 30, 11, RED)
+    c.line(5, 10, 26, 10, YELLOW, 1)
+
+    # Central engine pod and four-blade propeller above the fuselage.
+    c.rect(13, 4, 20, 10, INK)
+    c.rect(14, 5, 19, 9, STEEL_DARK)
+    c.rect(15, 5, 18, 6, YELLOW)
+    c.line(11, 6, 22, 6, INK, 2)
+    c.line(16, 1, 16, 12, INK, 2)
+    c.rect(15, 5, 17, 7, YELLOW)
+
+    # Structural struts and miniature boat floats.
+    c.line(7, 12, 11, 20, STEEL, 1)
+    c.line(25, 12, 21, 20, STEEL, 1)
+    for x in (7, 24):
+        c.line(x, 12, x, 23, STEEL_DARK, 1)
+        c.polygon([(x - 2, 23), (x + 2, 23), (x + 1, 26), (x - 1, 26)], INK)
+        c.rect(x - 1, 23, x + 1, 24, RED)
+        c.set(x, 23, YELLOW)
+
+    # Water tank hatch and identification pixels.
+    c.rect(15, 17, 20, 20, STEEL_DARK)
+    c.rect(16, 17, 19, 18, STEEL_LIGHT)
+    c.set(22, 18, WHITE)
+    c.set(24, 18, WHITE)
+    return c
+
+
 
 def hose_roll_small() -> Canvas:
     return hose_roll_icon((47, 132, 183, 255), 2)
@@ -423,12 +488,154 @@ ITEM_GENERATORS = {
     "pulaski": pulaski,
     "pump_fuel_can": pump_fuel_can,
     "thermal_scanner": thermal_scanner,
+    "firefighting_plane": firefighting_plane,
     "hose_roll_small": hose_roll_small,
     "hose_roll_standard": hose_roll_standard,
     "hose_roll_large": hose_roll_large,
     "hose_connector": hose_connector,
     "hose_anchor": hose_anchor,
 }
+
+
+def paint_aircraft_material(
+    canvas: Canvas,
+    bounds: tuple[int, int, int, int],
+    base,
+    dark,
+    light,
+    panel_size: int = 16,
+) -> None:
+    """Paint a Minecraft-style metal/material swatch for procedural cube UVs."""
+    x0, y0, x1, y1 = bounds
+    canvas.rect(x0, y0, x1, y1, base)
+    canvas.line(x0, y0, x1, y0, light)
+    canvas.line(x0, y0, x0, y1, light)
+    canvas.line(x0, y1, x1, y1, dark)
+    canvas.line(x1, y0, x1, y1, dark)
+    for x in range(x0 + panel_size, x1, panel_size):
+        canvas.line(x, y0 + 1, x, y1 - 1, dark)
+    for y in range(y0 + panel_size, y1, panel_size):
+        canvas.line(x0 + 1, y, x1 - 1, y, dark)
+    for y in range(y0 + 4, y1, 8):
+        for x in range(x0 + 4, x1, 8):
+            if (x * 3 + y * 5) % 17 == 0:
+                canvas.set(x, y, light)
+
+
+AIRCRAFT_FONT = {
+    "A": ("01", "10", "11", "10", "10"),
+    "B": ("10", "11", "10", "11", "10"),
+    "C": ("11", "10", "10", "10", "11"),
+    "E": ("11", "10", "11", "10", "11"),
+    "F": ("11", "10", "11", "10", "10"),
+    "I": ("1", "1", "1", "1", "1"),
+    "M": ("101", "111", "101", "101", "101"),
+    "O": ("11", "11", "11", "11", "11"),
+    "R": ("10", "11", "10", "11", "10"),
+    "S": ("11", "10", "11", "01", "11"),
+    "T": ("111", "010", "010", "010", "010"),
+    "U": ("10", "10", "10", "10", "11"),
+    "W": ("101", "101", "101", "111", "010"),
+    "2": ("11", "01", "11", "10", "11"),
+    "7": ("11", "01", "01", "01", "01"),
+}
+
+
+def draw_aircraft_word(canvas: Canvas, x: int, y: int, width: int, text: str, color, mirror=False) -> None:
+    glyphs = [AIRCRAFT_FONT[character] for character in text]
+    text_width = sum(len(glyph[0]) for glyph in glyphs) + len(glyphs) - 1
+    cursor = x + max(0, (width - text_width) // 2)
+    for glyph in glyphs:
+        glyph_width = len(glyph[0])
+        for row, pixels in enumerate(glyph):
+            for column, pixel in enumerate(pixels):
+                if pixel == "1":
+                    draw_x = cursor + column
+                    if mirror:
+                        draw_x = x + width - 1 - (draw_x - x)
+                    canvas.set(draw_x, y + row, color)
+        cursor += glyph_width + 1
+
+
+def draw_aircraft_panel(
+    canvas: Canvas,
+    origin_x: int,
+    origin_y: int,
+    top: str,
+    bottom: str,
+    base,
+    text,
+    border,
+) -> None:
+    # 19x13 is the exact side-face UV size of the thin panel cuboid.
+    for side, mirror in ((origin_x, False), (origin_x + 19, True)):
+        canvas.rect(side, origin_y, side + 18, origin_y + 12, base)
+        canvas.line(side, origin_y, side + 18, origin_y, border)
+        canvas.line(side, origin_y + 12, side + 18, origin_y + 12, border)
+        draw_aircraft_word(canvas, side, origin_y + 1, 19, top, text, mirror)
+        draw_aircraft_word(canvas, side, origin_y + 7, 19, bottom, text, mirror)
+
+
+def draw_identification_panel(canvas: Canvas) -> None:
+    # Side-face UVs for the 8x5 tail panel, duplicated and mirrored.
+    for side, mirror in ((88, False), (96, True)):
+        canvas.rect(side, 200, side + 7, 204, RED)
+        draw_aircraft_word(canvas, side, 200, 8, "F27", WHITE, mirror)
+
+
+def generate_firefighting_aircraft_texture() -> None:
+    """Generate the exact 512x256 atlas used by FirefightingPlaneModel."""
+    c = Canvas(512, 256, (42, 47, 49, 255))
+
+    # Primary material swatches used by the cuboid UV offsets in the Java model.
+    paint_aircraft_material(c, (0, 0, 95, 47), WHITE, (188, 190, 180, 255), (255, 252, 235, 255))
+    paint_aircraft_material(c, (104, 0, 199, 47), RED, RED_DARK, RED_LIGHT)
+    paint_aircraft_material(c, (208, 0, 303, 47), YELLOW, YELLOW_DARK, REFLECTIVE)
+    paint_aircraft_material(c, (312, 0, 375, 47), STEEL_DARK, RUBBER, STEEL)
+    paint_aircraft_material(c, (384, 0, 447, 47), GLASS, GLASS_DARK, GLASS_LIGHT, 12)
+    paint_aircraft_material(c, (456, 0, 511, 47), STEEL, STEEL_DARK, STEEL_LIGHT, 12)
+
+    # High-wing/flap swatches and red control surfaces.
+    paint_aircraft_material(c, (0, 64, 255, 111), WHITE, (177, 183, 177, 255), (255, 255, 241, 255), 24)
+    c.rect(0, 78, 255, 82, YELLOW)
+    c.line(0, 82, 255, 82, YELLOW_DARK)
+    paint_aircraft_material(c, (264, 64, 383, 111), RED, RED_DARK, RED_LIGHT, 16)
+
+    # Propeller, floats and blue inspection/fill hardware.
+    paint_aircraft_material(c, (64, 128, 127, 175), RUBBER, INK, STEEL_DARK, 12)
+    c.rect(64, 128, 127, 132, YELLOW)
+    paint_aircraft_material(c, (128, 128, 191, 175), RED, RED_DARK, RED_LIGHT, 12)
+    c.rect(128, 128, 191, 132, YELLOW)
+    paint_aircraft_material(c, (192, 128, 255, 175), BLUE, BLUE_DARK, BLUE_LIGHT, 10)
+    paint_aircraft_material(c, (256, 128, 383, 191), STEEL_DARK, RUBBER, STEEL, 16)
+    paint_aircraft_material(c, (384, 128, 511, 191), STEEL, STEEL_DARK, STEEL_LIGHT, 16)
+
+    # Exact side-panel UV faces: WATER/BOMBER, FIRE/RESCUE and white F27 ID.
+    c.rect(0, 192, 38, 224, RED_DARK)
+    draw_aircraft_panel(c, 0, 211, "FIRE", "RESCUE", RED, WHITE, YELLOW)
+    c.rect(44, 192, 82, 224, YELLOW_DARK)
+    draw_aircraft_panel(c, 44, 211, "WATER", "BOMBER", YELLOW, INK, WHITE)
+    c.rect(88, 192, 104, 208, RED)
+    draw_identification_panel(c)
+
+    # Port/starboard navigation lights are isolated to avoid colour bleeding.
+    c.rect(456, 64, 467, 79, (207, 40, 36, 255))
+    c.rect(457, 65, 466, 72, (255, 94, 72, 255))
+    c.rect(472, 64, 483, 79, (33, 151, 70, 255))
+    c.rect(473, 65, 482, 72, (91, 229, 119, 255))
+
+    # Moderate operational wear: exhaust soot and lower-hull water staining.
+    for x in range(328, 369):
+        if x % 3:
+            c.set(x, 20 + (x % 7), (28, 31, 32, 255))
+    for x in range(108, 196):
+        if x % 5 == 0:
+            c.set(x, 38 + (x % 4), (114, 69, 58, 255))
+    for x, y in ((112, 8), (128, 24), (160, 8), (184, 24)):
+        c.set(x, y, STEEL_LIGHT)
+        c.set(x + 1, y, RED_DARK)
+
+    write_png(ENTITY_TEXTURES / "firefighting_plane.png", c)
 
 BLOCK_ITEMS = (
     "portable_pump",
@@ -814,11 +1021,13 @@ def main() -> None:
     generate_client_items()
     generate_block_textures()
     generate_equipment()
+    generate_firefighting_aircraft_texture()
     generate_mod_icon()
     generate_models()
     print(
         f"Generated {len(ITEM_GENERATORS)} item icons, {len(REGISTERED_ITEMS)} client item definitions, "
-        "18 block/material textures, 2 armor textures, 10 block models and the 128px mod icon."
+        "18 block/material textures, 2 armor textures, the firefighting aircraft atlas, "
+        "10 block models and the 128px mod icon."
     )
 
 

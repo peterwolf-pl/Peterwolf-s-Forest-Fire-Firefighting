@@ -18,7 +18,7 @@ public class FirefightingPlaneRenderer extends EntityRenderer<PlaneEntity, Firef
 
 	public FirefightingPlaneRenderer(EntityRendererProvider.Context context) {
 		super(context);
-		this.shadowRadius = 1.0F;
+		this.shadowRadius = 2.6F;
 		this.model = new FirefightingPlaneModel(
 			context.bakeLayer(FirefightingPlanesClient.FIREFIGHTING_PLANE_LAYER)
 		);
