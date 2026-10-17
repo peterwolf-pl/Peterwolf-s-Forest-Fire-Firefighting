@@ -1,9 +1,9 @@
 package com.peterwolf.forestfire.block;
 
 import com.peterwolf.forestfire.ForestFireMod;
-import com.peterwolf.forestfire.firefighting.hose.HoseBlock;
 import com.peterwolf.forestfire.firefighting.hose.HoseSplitterBlock;
-import com.peterwolf.forestfire.firefighting.hose.IntakeHoseBlock;
+import com.peterwolf.forestfire.firefighting.hose.IntakeStrainerBlock;
+import com.peterwolf.forestfire.firefighting.nozzle.GroundNozzleBlock;
 import com.peterwolf.forestfire.firefighting.pump.PortablePumpBlock;
 import com.peterwolf.forestfire.firefighting.water.PortableSprinklerBlock;
 import com.peterwolf.forestfire.firefighting.water.PortableWaterTankBlock;
@@ -27,12 +27,8 @@ public final class ModBlocks {
 	public static final Block HOSE_SPLITTER = register("hose_splitter", HoseSplitterBlock::new,
 		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.5F).sound(SoundType.METAL));
 
-	public static final Block FIRE_HOSE = register("fire_hose", HoseBlock::new,
-		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_RED).strength(0.4F).sound(SoundType.WOOL)
-			.noOcclusion().pushReaction(PushReaction.DESTROY));
-
-	public static final Block INTAKE_HOSE = register("intake_hose", IntakeHoseBlock::new,
-		BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_BLUE).strength(0.4F).sound(SoundType.WOOL)
+	public static final Block INTAKE_STRAINER = register("intake_strainer", IntakeStrainerBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.5F).sound(SoundType.METAL)
 			.noOcclusion().pushReaction(PushReaction.DESTROY));
 
 	public static final Block WATER_TANK_SMALL = register("water_tank_small",
@@ -52,6 +48,10 @@ public final class ModBlocks {
 
 	public static final Block COMMAND_POST = register("command_post", CommandPostBlock::new,
 		BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5F).sound(SoundType.WOOD));
+
+	public static final Block GROUND_NOZZLE = register("ground_nozzle", GroundNozzleBlock::new,
+		BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.8F).sound(SoundType.METAL)
+			.noOcclusion().pushReaction(PushReaction.DESTROY));
 
 	private ModBlocks() {
 	}

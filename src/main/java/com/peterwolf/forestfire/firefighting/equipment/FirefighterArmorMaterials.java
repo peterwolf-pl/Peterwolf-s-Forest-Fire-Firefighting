@@ -15,7 +15,10 @@ import net.minecraft.world.item.equipment.EquipmentAssets;
  * Protective firefighter gear — reduces heat/smoke effects (logic in HeatExposureSystem).
  */
 public final class FirefighterArmorMaterials {
-	public static final ResourceKey<EquipmentAsset> ASSET_KEY = EquipmentAssets.createId("firefighter");
+	public static final ResourceKey<EquipmentAsset> ASSET_KEY = ResourceKey.create(
+		EquipmentAssets.ROOT_ID,
+		ForestFireMod.id("firefighter")
+	);
 
 	public static final ArmorMaterial FIREFIGHTER;
 

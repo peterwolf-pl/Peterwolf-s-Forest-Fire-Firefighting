@@ -3,7 +3,8 @@
 	"package": "com.peterwolf.forestfire.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"TitleScreenMixin"
+		"TitleScreenMixin",
+		"FireplaneAimCameraMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

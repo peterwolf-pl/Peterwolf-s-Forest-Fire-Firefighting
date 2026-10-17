@@ -32,6 +32,18 @@ https://github.com/peterwolf-pl/Peterwolf-s-Forest-Fire-Firefighting
 3. Drop the mod JAR into `mods/`
 4. For dedicated servers, install the same JAR on the server (client is only needed for HUD/dedication/particles)
 
+### Optional: Firefighting Water Bomber
+
+Forest Fire and **[Peterwolf's Planes](https://github.com/peterwolf-pl/peterwolfs-planes)** are **independent** — neither requires the other.
+
+| Mods in `mods/` | What you get |
+|-----------------|--------------|
+| Forest Fire only | Full wildfire / pump / hose gameplay |
+| Planes only | Normal aircraft |
+| **Both** | **Firefighting Water Bomber** (scoop, tank, aerial drop) |
+
+See [docs/FIREFIGHTING_AIRCRAFT.md](docs/FIREFIGHTING_AIRCRAFT.md).
+
 ## Quick start (multiplayer)
 
 1. `/fireincident create 4` near a forest
@@ -49,7 +61,9 @@ See [docs/ADMIN_COMMANDS.md](docs/ADMIN_COMMANDS.md).
 
 ## Configuration
 
-`config/peterwolfs_forestfire.json` — wind, max burning blocks, hose length, wetness, smoke, scoring weights.
+`config/peterwolfs_forestfire.json` — dynamic/fixed wind, direction and speed,
+max burning blocks, hose length, wetness, smoke, and scoring weights. Operators
+can inspect or change wind at runtime with `/wind`.
 
 See [docs/SERVER_CONFIG.md](docs/SERVER_CONFIG.md) and [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 

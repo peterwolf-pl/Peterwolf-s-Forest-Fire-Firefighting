@@ -1,6 +1,7 @@
 package com.peterwolf.forestfire.command;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.peterwolf.forestfire.config.ForestFireConfig;
 import com.peterwolf.forestfire.fire.incident.FireIncident;
 import com.peterwolf.forestfire.fire.incident.IncidentManager;
 import com.peterwolf.forestfire.fire.simulation.FireSimulation;
@@ -29,10 +30,17 @@ public final class FireTestCommands {
 							IntegerArgumentType.getInteger(ctx, "size")))))
 				.then(Commands.literal("stats").executes(ctx -> {
 					ServerLevel level = ctx.getSource().getLevel();
-					int cells = FireSimulation.get(level).cells().size();
+					FireSimulation simulation = FireSimulation.get(level);
+					int cells = simulation.cells().size();
+					int activeCells = simulation.activeCellCount();
+					int chunkTickets = simulation.activeFireChunkTicketCount();
+					ForestFireConfig.Data cfg = ForestFireConfig.get();
 					int incidents = IncidentManager.get(level).openIncidents().size();
 					ctx.getSource().sendSuccess(() -> Component.literal(
-						"Active fire cells=" + cells + " open incidents=" + incidents
+						"Fire cells tracked=" + cells
+							+ " active=" + activeCells + "/" + cfg.maxBurningBlocksPerWorld
+							+ " chunk tickets=" + chunkTickets + "/" + cfg.maxFireChunkTickets
+							+ " open incidents=" + incidents
 					), false);
 					return cells;
 				}))
@@ -42,12 +50,54 @@ public final class FireTestCommands {
 					for (FireIncident incident : manager.openIncidents().toArray(FireIncident[]::new)) {
 						manager.remove(incident.id);
 					}
-					FireSimulation.get(level).cells().clear();
+					FireSimulation simulation = FireSimulation.get(level);
+					simulation.cells().clear();
+					simulation.clearAllSparks();
 					manager.markDirty();
 					ctx.getSource().sendSuccess(() -> Component.literal("Cleared all fire simulation data."), true);
 					return 1;
 				}))
+				.then(Commands.literal("hoses").executes(ctx -> {
+					ServerLevel level = ctx.getSource().getLevel();
+					var mgr = com.peterwolf.forestfire.firefighting.hose.HoseConnectionManager.get(level);
+					int n = 0;
+					for (var c : mgr.all()) {
+						n++;
+						ctx.getSource().sendSuccess(() -> Component.literal(
+							c.type + " " + c.connectionId.toString().substring(0, 8)
+								+ " src=" + c.sourcePos.toShortString()
+								+ " tgt=" + c.targetPos.toShortString()
+								+ " len=" + c.deployedLength
+								+ " path=" + String.format("%.1f", c.currentPathLength)
+								+ " " + (c.connected ? "OK" : "DOWN")
+						), false);
+					}
+					int total = n;
+					ctx.getSource().sendSuccess(() -> Component.literal("Automatic hose connections: " + total), false);
+					return total;
+				}))
+				.then(Commands.literal("hosekit").executes(ctx -> {
+					ServerPlayer player = ctx.getSource().getPlayerOrException();
+					giveHoseTestKit(player);
+					ctx.getSource().sendSuccess(() -> Component.literal("Hose test kit given."), false);
+					return 1;
+				}))
 		));
+	}
+
+	private static void giveHoseTestKit(ServerPlayer player) {
+		var inv = player.getInventory();
+		inv.add(new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.PORTABLE_PUMP));
+		inv.add(new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.FIRE_HOSE_NOZZLE));
+		inv.add(new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.HOSE_CONNECTOR));
+		inv.add(new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.INTAKE_STRAINER));
+		inv.add(new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.PUMP_FUEL_CAN, 4));
+		var large = new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.HOSE_ROLL_LARGE);
+		com.peterwolf.forestfire.item.HoseRollItem.setRemaining(large, 64);
+		inv.add(large);
+		var std = new net.minecraft.world.item.ItemStack(com.peterwolf.forestfire.item.ModItems.HOSE_ROLL_STANDARD);
+		com.peterwolf.forestfire.item.HoseRollItem.setRemaining(std, 32);
+		inv.add(std);
 	}
 
 	private static int grid(ServerPlayer player, int size) {

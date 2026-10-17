@@ -3,11 +3,15 @@
 ## Establishing a water supply
 
 1. Find a river, lake, ocean, or place a **Portable Water Tank**.
-2. Place the **Portable Fire Pump** on stable ground near the water.
-3. Lay **Intake Hose** so it reaches water (or place the pump within ~3 blocks of water).
-4. Optional: place **Iron Bars** next to the pump as a stand-in **intake strainer** (reduces debris).
-5. Fill the pump with **Pump Fuel Can** (sneak-use / use on pump).
-6. **Sneak-use** the pump to start it. Use without sneak to read status.
+2. Place the **Portable Fire Pump** on solid ground (next to water is easiest).
+3. **Water intake** (one of these):
+   - put the pump within ~3 blocks of water, **or**
+   - lay **Intake Hose** from the pump into the water.
+4. **Intake Strainer** (recommended): place the strainer **in the water** (or next to the intake hose end / pump). It is a real block — right-click water/ground to place it.
+5. Fuel: right-click the pump with a **Pump Fuel Can**.
+6. **Start the pump: right-click the pump** (empty hand). Wait ~2 seconds until status says RUNNING.  
+   - Right-click again = OFF.  
+   - **Sneak + right-click** = status only (does not toggle).
 
 ## Connecting hoses
 
@@ -15,9 +19,29 @@
 2. Add a **Hose Splitter** to branch attack lines (use to cycle open lines — more lines = less pressure).
 3. Optional: place **Portable Sprinkler** on a pressurised line for structure defence.
 
-## Nozzle patterns
+## Nozzle (handheld + ground)
 
-Hold the **Fire Hose Nozzle** within 3 blocks of hose/pump:
+### Connect
+
+1. Lay **Fire Hose** from the pump (can connect before or after starting).
+2. With a free **Fire Hose Nozzle**, do **either**:
+   - **Right-click the Fire Hose block**, or
+   - **Right-click the ground/top of a block next to the hose** (within 8 blocks of hose).
+3. A **ground nozzle** block appears and is connected.
+
+### Pick up / place
+
+- **Right-click** the ground nozzle (empty hand) → pick up into main hand.
+- **Sneak + right-click** ground while holding → place it again (water closes).
+- Do **not** drop (Q) a connected nozzle — it will refuse; place it or disconnect.
+
+### Spray
+
+| Control | Action |
+|---------|--------|
+| Hold right-click | Open valve / spray |
+| Release | Close valve |
+| Sneak + right-click (air) | Cycle mode |
 
 | Mode | Use |
 |------|-----|
@@ -26,8 +50,11 @@ Hold the **Fire Hose Nozzle** within 3 blocks of hose/pump:
 | Wide Fog | Short range defence, wet lines, radiant heat shield |
 | Shutoff | Stop flow, preserve pressure |
 
-- **Hold use** to spray
-- **Sneak + use** to change mode
+You can only walk about **16 blocks** past the last hose segment (`nozzleFreeHoseBlocks`). HUD shows hose tension.
+
+### Disconnect
+
+Right-click the **hose coupling** with the connected nozzle while the valve is **closed**.
 
 Water reduces heat and increases moisture. A block may look extinguished while still hot — keep cooling.
 

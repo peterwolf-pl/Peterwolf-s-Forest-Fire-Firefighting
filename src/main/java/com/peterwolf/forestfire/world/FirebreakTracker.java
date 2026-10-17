@@ -33,6 +33,11 @@ public final class FirebreakTracker {
 	}
 
 	public void tick() {
+		tick(1);
+	}
+
+	public void tick(int elapsedGameTicks) {
+		int elapsed = Math.max(1, elapsedGameTicks);
 		Iterator<Map.Entry<Long, Entry>> it = breaks.entrySet().iterator();
 		while (it.hasNext()) {
 			Map.Entry<Long, Entry> entry = it.next();
@@ -40,7 +45,7 @@ public final class FirebreakTracker {
 			if (value.durationTicks < 0) {
 				continue; // permanent
 			}
-			value.durationTicks--;
+			value.durationTicks -= elapsed;
 			if (value.durationTicks <= 0) {
 				it.remove();
 			}

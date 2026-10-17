@@ -167,8 +167,15 @@ public final class IncidentManager {
 			}
 			sim.updateIncidentStats(incident);
 			incident.windDirection = wind.yawDegrees();
-			incident.windSpeed = wind.speed();
 			incident.humidity = WeatherFireModel.humidity01(level, incident.ignitionPos);
+			var storm = sim.firestorm();
+			incident.windSpeed = storm.active && storm.incidentId == incident.id
+				? wind.firestormSpeed()
+				: wind.speed();
+			if (storm.active && storm.incidentId == incident.id) {
+				// Intensity readout for command post / scoring context
+				incident.fireIntensity = Math.max(incident.fireIntensity, 0.55F + storm.intensity * 0.45F);
+			}
 
 			// Auto state transitions
 			if (incident.burningBlocks == 0 && incident.hotspotCount == 0
@@ -214,6 +221,11 @@ public final class IncidentManager {
 		for (ServerPlayer player : level.players()) {
 			ModNetworking.sendWind(player, new WindSyncPayload(wind.speed(), wind.yawDegrees()));
 			if (primary != null) {
+				var storm = FireSimulation.get(level).firestorm();
+				boolean stormAffectsPrimary = storm.active && storm.incidentId == primary.id;
+				String nozzleHint = stormAffectsPrimary
+					? String.format("FIRESTORM x%.1f", storm.spreadMultiplier)
+					: "";
 				ModNetworking.sendHud(player, new IncidentHudPayload(
 					primary.id,
 					primary.name,
@@ -222,8 +234,8 @@ public final class IncidentManager {
 					primary.containmentPercent,
 					primary.windSpeed,
 					primary.windDirection,
-					0.0F,
-					""
+					stormAffectsPrimary ? storm.intensity : 0.0F,
+					nozzleHint
 				));
 			}
 		}
@@ -248,7 +260,8 @@ public final class IncidentManager {
 	public void save() {
 		FireSavedData data = FireSavedData.get(level);
 		data.replaceIncidents(new ArrayList<>(incidents.values()));
-		data.setWind(wind.speed(), wind.yawDegrees());
+		// Fire-driven boost is transient and must not become ambient wind after reload.
+		data.setWind(wind.baseSpeed(), wind.yawDegrees());
 		data.replaceCells(FireSimulation.get(level).exportCells());
 		data.setDirty();
 	}
